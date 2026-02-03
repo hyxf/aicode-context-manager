@@ -36,8 +36,9 @@
 
     <actions>
         <!-- Project View Context Menu Group -->
+        <!-- Moved to CutCopyPasteGroup as requested -->
         <group id="AICodeGroup" text="AICode" popup="true">
-            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="CutCopyPasteGroup" anchor="last"/>
 
             <action id="com.aicode.action.AddToAICodeAction"
                     class="com.aicode.action.AddToAICodeAction"
@@ -60,7 +61,6 @@
     </actions>
 
     <projectListeners>
-        <!-- Updated to BulkFileListener to match Java implementation -->
         <listener class="com.aicode.listener.AICodeFileListener"
                   topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
     </projectListeners>

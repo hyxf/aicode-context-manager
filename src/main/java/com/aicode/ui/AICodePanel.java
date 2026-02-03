@@ -1,9 +1,14 @@
 package com.aicode.ui;
 
 import com.aicode.service.AICodeFileService;
+import com.aicode.util.ClipboardService;
+import com.aicode.util.MarkdownBuilder;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.CommonActionsManager;
 import com.intellij.ide.TreeExpander;
+import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationType;
+import com.intellij.notification.Notifications;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.fileEditor.FileEditorManager;
@@ -81,7 +86,7 @@ public class AICodePanel extends JPanel implements Disposable {
     private JComponent createToolbar() {
         DefaultActionGroup actionGroup = new DefaultActionGroup();
 
-        // Open Config
+        // 1. Open Config
         actionGroup.add(new AnAction("Open Configuration", "Open .aicode.json configuration file", AllIcons.General.Settings) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e) {
@@ -89,9 +94,17 @@ public class AICodePanel extends JPanel implements Disposable {
             }
         });
 
+        // 2. Copy as Markdown (NEW)
+        actionGroup.add(new AnAction("Copy as Markdown", "Export all context files as Markdown to clipboard", AllIcons.Actions.Copy) {
+            @Override
+            public void actionPerformed(@NotNull AnActionEvent e) {
+                copyMarkdownToClipboard();
+            }
+        });
+
         actionGroup.addSeparator();
 
-        // Expand All / Collapse All
+        // 3. Expand All / Collapse All
         TreeExpander treeExpander = new TreeExpander() {
             @Override
             public void expandAll() {
@@ -123,7 +136,7 @@ public class AICodePanel extends JPanel implements Disposable {
 
         actionGroup.addSeparator();
 
-        // Refresh
+        // 4. Refresh
         actionGroup.add(new AnAction("Refresh", "Refresh tree", AllIcons.Actions.Refresh) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e) {
@@ -139,6 +152,44 @@ public class AICodePanel extends JPanel implements Disposable {
         toolbar.setTargetComponent(this);
 
         return toolbar.getComponent();
+    }
+
+    private void copyMarkdownToClipboard() {
+        AICodeFileService service = AICodeFileService.getInstance(project);
+        List<String> filePaths = service.readFilePaths();
+
+        if (filePaths.isEmpty()) {
+            showNotification("No files in AICode context", NotificationType.WARNING);
+            return;
+        }
+
+        try {
+            // Run expensive operation in background (though reading small files is fast)
+            // For simplicity in UI action, direct call is acceptable if files aren't huge.
+            String markdown = MarkdownBuilder.buildMarkdown(
+                    project,
+                    filePaths,
+                    service::getFileFromPath
+            );
+
+            ClipboardService.copyToClipboard(markdown);
+
+            String message = String.format("AICode Markdown copied to clipboard (%d files)", filePaths.size());
+            showNotification(message, NotificationType.INFORMATION);
+
+        } catch (Exception ex) {
+            showNotification("Failed to export Markdown: " + ex.getMessage(), NotificationType.ERROR);
+        }
+    }
+
+    private void showNotification(String content, NotificationType type) {
+        Notification notification = new Notification(
+                "AICode",
+                "AICode Context Manager",
+                content,
+                type
+        );
+        Notifications.Bus.notify(notification, project);
     }
 
     private void setupListeners() {
@@ -231,11 +282,6 @@ public class AICodePanel extends JPanel implements Disposable {
     public void refreshTree() {
         // Run on EDT
         SwingUtilities.invokeLater(() -> {
-            // Save expansion state (simple version: list of expanded paths)
-            // For now, we will just fully expand or keep simple.
-            // Rebuilding tree invalidates objects, so preserving state needs path-based logic.
-            // Let's implement a simple rebuild first.
-
             rootNode.removeAllChildren();
 
             AICodeFileService service = AICodeFileService.getInstance(project);
@@ -323,7 +369,7 @@ public class AICodePanel extends JPanel implements Disposable {
         String displayName;
         String fullRelativePath;
         boolean isDirectory;
-        VirtualFile virtualFile; // Can be null if file deleted
+        VirtualFile virtualFile;
 
         public AICodeNodeData(String displayName, String fullRelativePath, boolean isDirectory) {
             this.displayName = displayName;
@@ -365,23 +411,16 @@ public class AICodePanel extends JPanel implements Disposable {
                         setIcon(data.virtualFile.getFileType().getIcon());
                     }
                 } else {
-                    // File missing or virtual file not resolved
                     setIcon(data.isDirectory ? AllIcons.Nodes.Folder : AllIcons.FileTypes.Unknown);
                 }
 
                 // Text
                 if (data.virtualFile == null && !data.displayName.equals("Project")) {
-                    // Missing file/dir
                     append(data.displayName, SimpleTextAttributes.ERROR_ATTRIBUTES);
                     append(" (missing)", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES);
                 } else {
                     append(data.displayName, SimpleTextAttributes.REGULAR_ATTRIBUTES);
                 }
-
-                // Gray text for relative path hint on leaves (optional, maybe too cluttered)
-                // if (!data.isDirectory && selected) {
-                //    append("  " + data.fullRelativePath, SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES);
-                // }
             }
         }
     }
