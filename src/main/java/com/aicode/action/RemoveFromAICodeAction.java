@@ -7,9 +7,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.openapi.vfs.VirtualFileVisitor;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -18,15 +16,17 @@ import java.util.HashSet;
 
 /**
  * Action to remove file or directory from AICode context
+ * Supports multiple file selection.
  */
 public class RemoveFromAICodeAction extends AnAction implements DumbAware {
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
         Project project = e.getProject();
-        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
+        // Support multi-selection
+        VirtualFile[] files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
 
-        if (project == null || file == null) {
+        if (project == null || files == null || files.length == 0) {
             return;
         }
 
@@ -34,24 +34,26 @@ public class RemoveFromAICodeAction extends AnAction implements DumbAware {
         List<String> currentPaths = service.readFilePaths();
         Set<String> pathsToRemove = new HashSet<>();
 
-        if (file.isDirectory()) {
-            // Collect all relative paths inside this directory that need removal
-            String dirRelativePath = service.getRelativePath(file);
-            if (dirRelativePath != null) {
-                // Determine prefix (e.g., "src/main/java/")
-                String prefix = dirRelativePath.endsWith("/") ? dirRelativePath : dirRelativePath + "/";
+        for (VirtualFile file : files) {
+            if (file.isDirectory()) {
+                // Collect all relative paths inside this directory that need removal
+                String dirRelativePath = service.getRelativePath(file);
+                if (dirRelativePath != null) {
+                    // Determine prefix (e.g., "src/main/java/")
+                    String prefix = dirRelativePath.endsWith("/") ? dirRelativePath : dirRelativePath + "/";
 
-                for (String path : currentPaths) {
-                    if (path.startsWith(prefix) || path.equals(dirRelativePath)) {
-                        pathsToRemove.add(path);
+                    for (String path : currentPaths) {
+                        if (path.startsWith(prefix) || path.equals(dirRelativePath)) {
+                            pathsToRemove.add(path);
+                        }
                     }
                 }
-            }
-        } else {
-            // Single file
-            String relativePath = service.getRelativePath(file);
-            if (relativePath != null) {
-                pathsToRemove.add(relativePath);
+            } else {
+                // Single file
+                String relativePath = service.getRelativePath(file);
+                if (relativePath != null) {
+                    pathsToRemove.add(relativePath);
+                }
             }
         }
 
@@ -64,34 +66,38 @@ public class RemoveFromAICodeAction extends AnAction implements DumbAware {
     @Override
     public void update(@NotNull AnActionEvent e) {
         Project project = e.getProject();
-        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
+        VirtualFile[] files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
 
         boolean visible = false;
-        if (project != null && file != null) {
+        if (project != null && files != null && files.length > 0) {
             AICodeFileService service = AICodeFileService.getInstance(project);
 
-            if (file.isDirectory()) {
-                // If it's a directory, show "Remove" if ANY file inside is potentially tracked?
-                // Or simplified: Just show it if it's not root, user can try to remove.
-                // Better UX: check if directory path matches any prefix in the list.
-                boolean isRoot = file.equals(project.getBaseDir());
-                if (!isRoot) {
-                     String dirPath = service.getRelativePath(file);
-                     if (dirPath != null) {
-                         String prefix = dirPath.endsWith("/") ? dirPath : dirPath + "/";
-                         // Check if any tracked file starts with this directory
-                         List<String> paths = service.readFilePaths();
-                         for (String path : paths) {
-                             if (path.startsWith(prefix)) {
-                                 visible = true;
-                                 break;
+            // Check if ANY of the selected files can be removed
+            for (VirtualFile file : files) {
+                if (file.isDirectory()) {
+                    boolean isRoot = file.equals(project.getBaseDir());
+                    if (!isRoot) {
+                         String dirPath = service.getRelativePath(file);
+                         if (dirPath != null) {
+                             String prefix = dirPath.endsWith("/") ? dirPath : dirPath + "/";
+                             // Check if any tracked file starts with this directory
+                             List<String> paths = service.readFilePaths();
+                             for (String path : paths) {
+                                 if (path.startsWith(prefix)) {
+                                     visible = true;
+                                     break;
+                                 }
                              }
                          }
-                     }
+                    }
+                } else {
+                    // Single file
+                    if (service.containsFile(file)) {
+                        visible = true;
+                    }
                 }
-            } else {
-                // Single file
-                visible = service.containsFile(file);
+
+                if (visible) break;
             }
         }
 

@@ -19,49 +19,56 @@ import java.util.Set;
 
 /**
  * Action to add file or directory (recursively) to AICode context
+ * Supports multiple file selection.
  */
 public class AddToAICodeAction extends AnAction implements DumbAware {
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
         Project project = e.getProject();
-        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
+        // Support multi-selection
+        VirtualFile[] files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
 
-        if (project == null || file == null) {
-            return;
-        }
-
-        // Prevent adding project root
-        if (file.equals(project.getBaseDir())) {
+        if (project == null || files == null || files.length == 0) {
             return;
         }
 
         AICodeFileService service = AICodeFileService.getInstance(project);
+        VirtualFile baseDir = project.getBaseDir();
 
         // Batch operation to avoid multiple refreshes
         List<String> currentPaths = new ArrayList<>(service.readFilePaths());
         Set<String> existingSet = new HashSet<>(currentPaths);
         List<String> newPathsToAdd = new ArrayList<>();
 
-        if (file.isDirectory()) {
-            // Recursively visit directory
-            VfsUtilCore.visitChildrenRecursively(file, new VirtualFileVisitor<Void>() {
-                @Override
-                public boolean visitFile(@NotNull VirtualFile child) {
-                    if (!child.isDirectory() && !".aicode.json".equals(child.getName())) {
-                        String relativePath = service.getRelativePath(child);
-                        if (relativePath != null && !existingSet.contains(relativePath)) {
-                            newPathsToAdd.add(relativePath);
+        for (VirtualFile file : files) {
+            // Prevent adding project root
+            if (file.equals(baseDir)) {
+                continue;
+            }
+
+            if (file.isDirectory()) {
+                // Recursively visit directory
+                VfsUtilCore.visitChildrenRecursively(file, new VirtualFileVisitor<Void>() {
+                    @Override
+                    public boolean visitFile(@NotNull VirtualFile child) {
+                        if (!child.isDirectory() && !".aicode.json".equals(child.getName())) {
+                            String relativePath = service.getRelativePath(child);
+                            if (relativePath != null && !existingSet.contains(relativePath)) {
+                                newPathsToAdd.add(relativePath);
+                            }
                         }
+                        return true;
                     }
-                    return true;
+                });
+            } else {
+                // Single file
+                if (!".aicode.json".equals(file.getName())) {
+                    String relativePath = service.getRelativePath(file);
+                    if (relativePath != null && !existingSet.contains(relativePath)) {
+                        newPathsToAdd.add(relativePath);
+                    }
                 }
-            });
-        } else {
-            // Single file
-            String relativePath = service.getRelativePath(file);
-            if (relativePath != null && !existingSet.contains(relativePath)) {
-                newPathsToAdd.add(relativePath);
             }
         }
 
@@ -74,26 +81,33 @@ public class AddToAICodeAction extends AnAction implements DumbAware {
     @Override
     public void update(@NotNull AnActionEvent e) {
         Project project = e.getProject();
-        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
+        VirtualFile[] files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
 
         boolean visible = false;
-        if (project != null && file != null) {
-            // 1. Exclude Project Root
-            boolean isRoot = file.equals(project.getBaseDir());
-            // 2. Exclude config file
-            boolean isConfigFile = ".aicode.json".equals(file.getName());
+        if (project != null && files != null && files.length > 0) {
+            AICodeFileService service = AICodeFileService.getInstance(project);
 
-            if (!isRoot && !isConfigFile) {
-                AICodeFileService service = AICodeFileService.getInstance(project);
+            // Check if ANY of the selected files can be added
+            for (VirtualFile file : files) {
+                // 1. Exclude Project Root
+                boolean isRoot = file.equals(project.getBaseDir());
+                // 2. Exclude config file
+                boolean isConfigFile = ".aicode.json".equals(file.getName());
 
-                if (file.isDirectory()) {
-                    // For directory: Always show "Add" (simplified logic,
-                    // or checking if ANY file inside is missing could be expensive)
-                    visible = true;
-                } else {
-                    // For file: Only show if NOT in list
-                    visible = !service.containsFile(file);
+                if (!isRoot && !isConfigFile) {
+                    if (file.isDirectory()) {
+                        // Directory is always addable (simplified)
+                        visible = true;
+                    } else {
+                        // File is visible if NOT in list
+                        if (!service.containsFile(file)) {
+                            visible = true;
+                        }
+                    }
                 }
+
+                // If we found at least one valid candidate, enable the action
+                if (visible) break;
             }
         }
 
