@@ -26,14 +26,15 @@ tasks {
         sourceCompatibility = "17"
         targetCompatibility = "17"
     }
-    
+
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         kotlinOptions.jvmTarget = "17"
     }
 
     patchPluginXml {
         sinceBuild.set("232")
-        untilBuild.set("242.*")
+        // Updated to support newer IDE versions (e.g. 2025.x)
+        untilBuild.set("300.*")
     }
 
     signPlugin {
