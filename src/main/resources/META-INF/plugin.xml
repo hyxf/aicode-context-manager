@@ -1,0 +1,66 @@
+<idea-plugin>
+    <id>com.aicode.context-manager</id>
+    <name>AICode Context Manager</name>
+    <vendor email="support@aicode.com" url="https://aicode.com">AICode</vendor>
+
+    <description><![CDATA[
+    <h2>AICode Context Manager</h2>
+    <p>Manage code context files for AI assistance with one-click Markdown export.</p>
+    <br/>
+    <h3>Features:</h3>
+    <ul>
+      <li>Add/Remove files to AI context via right-click menu</li>
+      <li>Visualize context files in Tool Window</li>
+      <li>Support multi-module projects</li>
+      <li>Auto-sync file changes (rename, move, delete)</li>
+      <li>Export all context files as Markdown code package</li>
+      <li>Undo support for all operations</li>
+    </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.java</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Tool Window -->
+        <toolWindow
+                id="AICode Context"
+                anchor="right"
+                icon="/icons/aicode.svg"
+                factoryClass="com.aicode.ui.AICodeToolWindowFactory"/>
+
+        <!-- Project Service -->
+        <projectService
+                serviceImplementation="com.aicode.service.AICodeFileService"/>
+    </extensions>
+
+    <actions>
+        <!-- Project View Context Menu Group -->
+        <group id="AICodeGroup" text="AICode" popup="true">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            
+            <action id="com.aicode.action.AddToAICodeAction"
+                    class="com.aicode.action.AddToAICodeAction"
+                    text="Add to AICode"
+                    description="Add file to AICode context">
+            </action>
+            
+            <action id="com.aicode.action.RemoveFromAICodeAction"
+                    class="com.aicode.action.RemoveFromAICodeAction"
+                    text="Remove from AICode"
+                    description="Remove file from AICode context">
+            </action>
+
+            <action id="com.aicode.action.CopyMarkdownAction"
+                    class="com.aicode.action.CopyMarkdownAction"
+                    text="Copy as Markdown"
+                    description="Export AICode context as Markdown">
+            </action>
+        </group>
+    </actions>
+
+    <projectListeners>
+        <listener class="com.aicode.listener.AICodeFileListener"
+                  topic="com.intellij.openapi.vfs.VirtualFileListener"/>
+    </projectListeners>
+</idea-plugin>
