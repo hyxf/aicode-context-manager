@@ -55,5 +55,3 @@ jobs:
           generate_release_notes: true
           # 上传 build/distributions/ 下的所有 zip 文件
           files: build/distributions/*.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

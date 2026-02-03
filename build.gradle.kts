@@ -7,7 +7,7 @@ plugins {
 group = "com.aicode"
 
 // 尝试从 Gradle 属性中获取 pluginVersion，如果没有则使用默认值 "1.0.0-SNAPSHOT"
-val buildVersion = properties["pluginVersion"] as? String ?: "1.0.8-SNAPSHOT"
+val buildVersion = properties["pluginVersion"] as? String ?: "1.0.0-SNAPSHOT"
 version = buildVersion
 
 repositories {
