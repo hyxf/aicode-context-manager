@@ -3,7 +3,7 @@ import sys
 
 # Define base paths
 BASE_DIR = os.getcwd()
-SRC_MAIN_JAVA = os.path.join(BASE_DIR, "aicode-context-manager", "src", "main", "java", "com", "aicode")
+SRC_MAIN_JAVA = os.path.join(BASE_DIR, "src", "main", "java", "com", "aicode")
 
 def update_file(file_path, content):
     """Writes content to a file."""

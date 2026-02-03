@@ -33,9 +33,12 @@ public class AddToAICodeAction extends AnAction {
 
         boolean visible = false;
         if (project != null && file != null && !file.isDirectory()) {
-            AICodeFileService service = AICodeFileService.getInstance(project);
-            // Only show "Add" if file is not already in the list
-            visible = !service.containsFile(file);
+            // Prevent adding the configuration file itself
+            if (!".aicode.json".equals(file.getName())) {
+                AICodeFileService service = AICodeFileService.getInstance(project);
+                // Only show "Add" if file is not already in the list
+                visible = !service.containsFile(file);
+            }
         }
 
         e.getPresentation().setEnabledAndVisible(visible);

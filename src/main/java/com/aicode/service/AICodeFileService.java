@@ -6,6 +6,7 @@ import com.google.gson.reflect.TypeToken;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.util.messages.Topic;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -14,7 +15,6 @@ import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * Service for managing .aicode.json file operations
@@ -23,6 +23,14 @@ public class AICodeFileService {
     private static final String AICODE_FILE_NAME = ".aicode.json";
     private final Project project;
     private final Gson gson;
+
+    // Topic for notifications
+    public static final Topic<AICodeStateListener> AICODE_TOPIC =
+            Topic.create("AICode Context Changed", AICodeStateListener.class);
+
+    public interface AICodeStateListener {
+        void onContextChanged();
+    }
 
     public AICodeFileService(Project project) {
         this.project = project;
@@ -98,6 +106,8 @@ public class AICodeFileService {
             try {
                 String json = gson.toJson(paths);
                 aiCodeFile.setBinaryContent(json.getBytes(StandardCharsets.UTF_8));
+                // Notify listeners
+                notifyChange();
             } catch (IOException e) {
                 // Handle error
             }
@@ -118,6 +128,7 @@ public class AICodeFileService {
             if (!paths.contains(relativePath)) {
                 paths.add(relativePath);
                 writeFilePaths(paths);
+                // writeFilePaths calls notify, but wrapped here ensures consistency
             }
         });
     }
@@ -161,6 +172,10 @@ public class AICodeFileService {
                 writeFilePaths(paths);
             }
         });
+    }
+
+    private void notifyChange() {
+        project.getMessageBus().syncPublisher(AICODE_TOPIC).onContextChanged();
     }
 
     /**
