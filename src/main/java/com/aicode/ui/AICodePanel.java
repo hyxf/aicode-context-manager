@@ -1,19 +1,18 @@
 package com.aicode.ui;
 
 import com.aicode.service.AICodeFileService;
+import com.intellij.icons.AllIcons;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtil;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.ColoredListCellRenderer;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.JBList;
 import com.intellij.ui.components.JBScrollPane;
-import com.intellij.util.IconUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -63,38 +62,25 @@ public class AICodePanel extends JPanel implements Disposable {
 
                 VirtualFile file = value.getFile();
 
-                // Icon
+                // Icon Logic
                 if (file != null) {
                     setIcon(file.getFileType().getIcon());
                 } else {
-                    // Fallback icon if file missing
-                    setIcon(IconUtil.getEmptyIcon(true));
+                    // Show warning icon if file is missing
+                    setIcon(AllIcons.General.Warning);
                 }
 
-                // Text
+                // Text Logic
                 if (file == null) {
-                    append("⚠️ " + value.getPath(), SimpleTextAttributes.ERROR_ATTRIBUTES);
+                    append(value.getPath(), SimpleTextAttributes.ERROR_ATTRIBUTES);
                     append(" (missing)", SimpleTextAttributes.GRAYED_ATTRIBUTES);
                 } else {
-                    append(file.getName(), SimpleTextAttributes.REGULAR_ATTRIBUTES);
+                    // Show full relative path as requested
+                    append(value.getPath(), SimpleTextAttributes.REGULAR_ATTRIBUTES);
 
-                    // Module info or directory info in gray
-                    String extraInfo = "";
+                    // Show module name at the end in gray
                     if (value.getModuleName() != null) {
-                        extraInfo += "[" + value.getModuleName() + "] ";
-                    }
-
-                    // Show parent directory for context
-                    String parentPath = value.getPath().substring(0, value.getPath().length() - file.getName().length());
-                    if (parentPath.endsWith("/")) {
-                        parentPath = parentPath.substring(0, parentPath.length() - 1);
-                    }
-                    if (!parentPath.isEmpty()) {
-                        extraInfo += parentPath;
-                    }
-
-                    if (!extraInfo.isEmpty()) {
-                        append("  " + extraInfo, SimpleTextAttributes.GRAY_ATTRIBUTES);
+                        append(" [" + value.getModuleName() + "]", SimpleTextAttributes.GRAY_ATTRIBUTES);
                     }
                 }
             }
@@ -113,14 +99,16 @@ public class AICodePanel extends JPanel implements Disposable {
     private JComponent createToolbar() {
         DefaultActionGroup actionGroup = new DefaultActionGroup();
 
-        actionGroup.add(new AnAction("Open Configuration", "Open .aicode.json configuration file", null) {
+        // Use system icons: AllIcons.General.Settings
+        actionGroup.add(new AnAction("Open Configuration", "Open .aicode.json configuration file", AllIcons.General.Settings) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e) {
                 openAICodeFile();
             }
         });
 
-        actionGroup.add(new AnAction("Refresh", "Refresh file list", null) {
+        // Use system icons: AllIcons.Actions.Refresh
+        actionGroup.add(new AnAction("Refresh", "Refresh file list", AllIcons.Actions.Refresh) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e) {
                 refreshList();
@@ -181,14 +169,13 @@ public class AICodePanel extends JPanel implements Disposable {
                 // Remove by path if file is missing
                 AICodeFileService.getInstance(project).removeFilePath(item.getPath());
             }
-            // No manual refresh needed anymore, listener handles it
         });
         menu.add(removeItem);
         menu.show(fileList, e.getX(), e.getY());
     }
 
     public void refreshList() {
-        // Run on EDT to ensure thread safety for UI updates
+        // Run on EDT
         SwingUtilities.invokeLater(() -> {
             listModel.clear();
 
@@ -222,8 +209,7 @@ public class AICodePanel extends JPanel implements Disposable {
 
     @Override
     public void dispose() {
-        // Resources are disposed automatically by the platform,
-        // but this method is required by Disposable interface
+        // Required by Disposable interface
     }
 
     /**
