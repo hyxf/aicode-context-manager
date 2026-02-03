@@ -6,9 +6,11 @@ import com.aicode.util.MarkdownBuilder;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
 import com.intellij.notification.Notifications;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import org.jetbrains.annotations.NotNull;
@@ -18,7 +20,7 @@ import java.util.List;
 /**
  * Action to copy AICode context as Markdown to clipboard
  */
-public class CopyMarkdownAction extends AnAction {
+public class CopyMarkdownAction extends AnAction implements DumbAware {
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
@@ -64,6 +66,11 @@ public class CopyMarkdownAction extends AnAction {
         }
 
         e.getPresentation().setEnabledAndVisible(visible);
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
     }
 
     private void showNotification(@NotNull Project project, @NotNull String content, @NotNull NotificationType type) {

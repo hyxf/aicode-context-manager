@@ -38,13 +38,13 @@
         <!-- Project View Context Menu Group -->
         <group id="AICodeGroup" text="AICode" popup="true">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
-            
+
             <action id="com.aicode.action.AddToAICodeAction"
                     class="com.aicode.action.AddToAICodeAction"
                     text="Add to AICode"
                     description="Add file to AICode context">
             </action>
-            
+
             <action id="com.aicode.action.RemoveFromAICodeAction"
                     class="com.aicode.action.RemoveFromAICodeAction"
                     text="Remove from AICode"
@@ -60,7 +60,8 @@
     </actions>
 
     <projectListeners>
+        <!-- Updated to BulkFileListener to match Java implementation -->
         <listener class="com.aicode.listener.AICodeFileListener"
-                  topic="com.intellij.openapi.vfs.VirtualFileListener"/>
+                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
     </projectListeners>
 </idea-plugin>

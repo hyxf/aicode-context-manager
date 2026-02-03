@@ -1,87 +1,316 @@
 import os
-import sys
 
-# Define base paths
-BASE_DIR = os.getcwd()
-PROJECT_DIR = os.path.join(BASE_DIR)
+# 定义工程根目录（假设脚本放在工程根目录）
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-def update_file(file_path, content):
-    """Writes content to a file."""
-    full_path = os.path.join(PROJECT_DIR, file_path)
-    try:
-        with open(full_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-        print(f"✅ Successfully updated: {file_path}")
-    except Exception as e:
-        print(f"❌ Error updating {file_path}: {e}")
-        sys.exit(1)
+def write_file(relative_path, content):
+    full_path = os.path.join(PROJECT_ROOT, relative_path)
+    # 确保目录存在
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
 
-# -----------------------------------------------------------------------------
-# Update build.gradle.kts
-# Requirement: Increase untilBuild to support newer IDE versions (253.*)
-# -----------------------------------------------------------------------------
-build_gradle_content = r"""plugins {
-    id("java")
-    id("org.jetbrains.kotlin.jvm") version "1.9.22"
-    id("org.jetbrains.intellij") version "1.17.2"
-}
+    with open(full_path, 'w', encoding='utf-8') as f:
+        f.write(content.strip())
+    print(f"✅ Replaced: {relative_path}")
 
-group = "com.aicode"
-version = "1.0.0"
+# ==========================================
+# 1. AddToAICodeAction.java
+# 修复：实现 DumbAware，添加 getActionUpdateThread (BGT)
+# ==========================================
+add_action_content = """
+package com.aicode.action;
 
-repositories {
-    mavenCentral()
-}
+import com.aicode.service.AICodeFileService;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.project.DumbAware;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VirtualFile;
+import org.jetbrains.annotations.NotNull;
 
-dependencies {
-    implementation("com.google.code.gson:gson:2.10.1")
-}
+/**
+ * Action to add file to AICode context
+ */
+public class AddToAICodeAction extends AnAction implements DumbAware {
 
-intellij {
-    version.set("2023.2")
-    type.set("IC")
-    plugins.set(listOf("java"))
-}
+    @Override
+    public void actionPerformed(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
 
-tasks {
-    withType<JavaCompile> {
-        sourceCompatibility = "17"
-        targetCompatibility = "17"
+        if (project == null || file == null || file.isDirectory()) {
+            return;
+        }
+
+        AICodeFileService service = AICodeFileService.getInstance(project);
+        service.addFile(file);
     }
 
-    withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-        kotlinOptions.jvmTarget = "17"
+    @Override
+    public void update(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
+
+        boolean visible = false;
+        if (project != null && file != null && !file.isDirectory()) {
+            // Prevent adding the configuration file itself
+            if (!".aicode.json".equals(file.getName())) {
+                AICodeFileService service = AICodeFileService.getInstance(project);
+                // Only show "Add" if file is not already in the list
+                visible = !service.containsFile(file);
+            }
+        }
+
+        e.getPresentation().setEnabledAndVisible(visible);
     }
 
-    patchPluginXml {
-        sinceBuild.set("232")
-        // Updated to support newer IDE versions (e.g. 2025.x)
-        untilBuild.set("300.*")
-    }
-
-    signPlugin {
-        certificateChain.set(System.getenv("CERTIFICATE_CHAIN"))
-        privateKey.set(System.getenv("PRIVATE_KEY"))
-        password.set(System.getenv("PRIVATE_KEY_PASSWORD"))
-    }
-
-    publishPlugin {
-        token.set(System.getenv("PUBLISH_TOKEN"))
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
     }
 }
 """
 
-# -----------------------------------------------------------------------------
-# Execution
-# -----------------------------------------------------------------------------
-print("🚀 Starting Compatibility Fix...")
+# ==========================================
+# 2. RemoveFromAICodeAction.java
+# 修复：实现 DumbAware，添加 getActionUpdateThread (BGT)
+# ==========================================
+remove_action_content = """
+package com.aicode.action;
 
-# Ensure directory exists
-if not os.path.exists(PROJECT_DIR):
-    print(f"❌ Could not find project directory: {PROJECT_DIR}")
-    print("Please make sure you run this script from the project root.")
-    sys.exit(1)
+import com.aicode.service.AICodeFileService;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.project.DumbAware;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VirtualFile;
+import org.jetbrains.annotations.NotNull;
 
-update_file("build.gradle.kts", build_gradle_content)
+/**
+ * Action to remove file from AICode context
+ */
+public class RemoveFromAICodeAction extends AnAction implements DumbAware {
 
-print("✨ Compatibility fixed! Please rebuild the plugin (Gradle Clean & Build).")
+    @Override
+    public void actionPerformed(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
+
+        if (project == null || file == null) {
+            return;
+        }
+
+        AICodeFileService service = AICodeFileService.getInstance(project);
+        service.removeFile(file);
+    }
+
+    @Override
+    public void update(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
+
+        boolean visible = false;
+        if (project != null && file != null) {
+            AICodeFileService service = AICodeFileService.getInstance(project);
+            // Only show "Remove" if file is in the list
+            visible = service.containsFile(file);
+        }
+
+        e.getPresentation().setEnabledAndVisible(visible);
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
+    }
+}
+"""
+
+# ==========================================
+# 3. CopyMarkdownAction.java
+# 修复：实现 DumbAware，添加 getActionUpdateThread (BGT)
+# ==========================================
+copy_action_content = """
+package com.aicode.action;
+
+import com.aicode.service.AICodeFileService;
+import com.aicode.util.ClipboardService;
+import com.aicode.util.MarkdownBuilder;
+import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationType;
+import com.intellij.notification.Notifications;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.project.DumbAware;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VirtualFile;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
+
+/**
+ * Action to copy AICode context as Markdown to clipboard
+ */
+public class CopyMarkdownAction extends AnAction implements DumbAware {
+
+    @Override
+    public void actionPerformed(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        if (project == null) {
+            return;
+        }
+
+        AICodeFileService service = AICodeFileService.getInstance(project);
+        List<String> filePaths = service.readFilePaths();
+
+        if (filePaths.isEmpty()) {
+            showNotification(project, "No files in AICode context", NotificationType.WARNING);
+            return;
+        }
+
+        try {
+            String markdown = MarkdownBuilder.buildMarkdown(
+                    project,
+                    filePaths,
+                    service::getFileFromPath
+            );
+
+            ClipboardService.copyToClipboard(markdown);
+
+            String message = String.format("AICode Markdown copied to clipboard (%d files)", filePaths.size());
+            showNotification(project, message, NotificationType.INFORMATION);
+
+        } catch (Exception ex) {
+            showNotification(project, "Failed to export Markdown: " + ex.getMessage(), NotificationType.ERROR);
+        }
+    }
+
+    @Override
+    public void update(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
+
+        boolean visible = false;
+        if (project != null && file != null && !file.isDirectory()) {
+            // Only show for .aicode.json file
+            visible = ".aicode.json".equals(file.getName());
+        }
+
+        e.getPresentation().setEnabledAndVisible(visible);
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
+    }
+
+    private void showNotification(@NotNull Project project, @NotNull String content, @NotNull NotificationType type) {
+        Notification notification = new Notification(
+                "AICode",
+                "AICode Context Manager",
+                content,
+                type
+        );
+        Notifications.Bus.notify(notification, project);
+    }
+}
+"""
+
+# ==========================================
+# 4. plugin.xml
+# 修复：将错误的 VirtualFileListener 修正为 BulkFileListener
+# ==========================================
+plugin_xml_content = """
+<idea-plugin>
+    <id>com.aicode.context-manager</id>
+    <name>AICode Context Manager</name>
+    <vendor email="support@aicode.com" url="https://aicode.com">AICode</vendor>
+
+    <description><![CDATA[
+    <h2>AICode Context Manager</h2>
+    <p>Manage code context files for AI assistance with one-click Markdown export.</p>
+    <br/>
+    <h3>Features:</h3>
+    <ul>
+      <li>Add/Remove files to AI context via right-click menu</li>
+      <li>Visualize context files in Tool Window</li>
+      <li>Support multi-module projects</li>
+      <li>Auto-sync file changes (rename, move, delete)</li>
+      <li>Export all context files as Markdown code package</li>
+      <li>Undo support for all operations</li>
+    </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.java</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Tool Window -->
+        <toolWindow
+                id="AICode Context"
+                anchor="right"
+                icon="/icons/aicode.svg"
+                factoryClass="com.aicode.ui.AICodeToolWindowFactory"/>
+
+        <!-- Project Service -->
+        <projectService
+                serviceImplementation="com.aicode.service.AICodeFileService"/>
+    </extensions>
+
+    <actions>
+        <!-- Project View Context Menu Group -->
+        <group id="AICodeGroup" text="AICode" popup="true">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+
+            <action id="com.aicode.action.AddToAICodeAction"
+                    class="com.aicode.action.AddToAICodeAction"
+                    text="Add to AICode"
+                    description="Add file to AICode context">
+            </action>
+
+            <action id="com.aicode.action.RemoveFromAICodeAction"
+                    class="com.aicode.action.RemoveFromAICodeAction"
+                    text="Remove from AICode"
+                    description="Remove file from AICode context">
+            </action>
+
+            <action id="com.aicode.action.CopyMarkdownAction"
+                    class="com.aicode.action.CopyMarkdownAction"
+                    text="Copy as Markdown"
+                    description="Export AICode context as Markdown">
+            </action>
+        </group>
+    </actions>
+
+    <projectListeners>
+        <!-- Updated to BulkFileListener to match Java implementation -->
+        <listener class="com.aicode.listener.AICodeFileListener"
+                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
+    </projectListeners>
+</idea-plugin>
+"""
+
+def main():
+    print("🚀 Starting direct file replacement...")
+
+    # 路径映射
+    files_to_update = {
+        "src/main/java/com/aicode/action/AddToAICodeAction.java": add_action_content,
+        "src/main/java/com/aicode/action/RemoveFromAICodeAction.java": remove_action_content,
+        "src/main/java/com/aicode/action/CopyMarkdownAction.java": copy_action_content,
+        "src/main/resources/META-INF/plugin.xml": plugin_xml_content
+    }
+
+    for path, content in files_to_update.items():
+        write_file(path, content)
+
+    print("\n🎉 All files updated successfully!")
+    print("Please run './gradlew buildPlugin' to rebuild.")
+
+if __name__ == "__main__":
+    main()

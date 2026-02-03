@@ -1,15 +1,13 @@
 [
-  "build.gradle.kts",
-  "settings.gradle.kts",
   "src/main/java/com/aicode/action/AddToAICodeAction.java",
   "src/main/java/com/aicode/action/CopyMarkdownAction.java",
   "src/main/java/com/aicode/action/RemoveFromAICodeAction.java",
   "src/main/java/com/aicode/listener/AICodeFileListener.java",
-  "src/main/java/com/aicode/service/AICodeFileService.java",
   "src/main/java/com/aicode/ui/AICodePanel.java",
   "src/main/java/com/aicode/ui/AICodeToolWindowFactory.java",
   "src/main/java/com/aicode/util/ClipboardService.java",
   "src/main/java/com/aicode/util/CodeLanguageResolver.java",
   "src/main/java/com/aicode/util/MarkdownBuilder.java",
-  "src/main/resources/META-INF/plugin.xml"
+  "src/main/resources/META-INF/plugin.xml",
+  "README.md"
 ]
