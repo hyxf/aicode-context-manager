@@ -1,427 +1,253 @@
 import os
 import sys
 
-# 定义新的 AICodePanel.java 内容
-AICODE_PANEL_CONTENT = r"""package com.aicode.ui;
+# 1. AddToAICodeAction.java
+# 修改点：
+# - update: 允许文件夹（非根目录）。
+# - actionPerformed: 如果是文件夹，递归获取内部所有文件，计算相对路径，批量添加到列表，一次性写入。
+ADD_ACTION_CONTENT = r"""package com.aicode.action;
 
 import com.aicode.service.AICodeFileService;
-import com.intellij.icons.AllIcons;
-import com.intellij.ide.CommonActionsManager;
-import com.intellij.ide.TreeExpander;
-import com.intellij.openapi.Disposable;
-import com.intellij.openapi.actionSystem.*;
-import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.ui.ColoredTreeCellRenderer;
-import com.intellij.ui.SimpleTextAttributes;
-import com.intellij.ui.components.JBScrollPane;
-import com.intellij.ui.treeStructure.Tree;
-import com.intellij.util.ui.tree.TreeUtil;
+import com.intellij.openapi.vfs.VirtualFileVisitor;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
-import javax.swing.tree.DefaultMutableTreeNode;
-import javax.swing.tree.DefaultTreeModel;
-import javax.swing.tree.TreePath;
-import javax.swing.tree.TreeSelectionModel;
-import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
- * Panel for AICode Tool Window with Tree View
+ * Action to add file or directory (recursively) to AICode context
  */
-public class AICodePanel extends JPanel implements Disposable {
-    private final Project project;
-    private final Tree tree;
-    private final DefaultTreeModel treeModel;
-    private final DefaultMutableTreeNode rootNode;
+public class AddToAICodeAction extends AnAction implements DumbAware {
 
-    public AICodePanel(@NotNull Project project) {
-        this.project = project;
+    @Override
+    public void actionPerformed(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
 
-        // Init Tree
-        this.rootNode = new DefaultMutableTreeNode(new AICodeNodeData("Project", null, true));
-        this.treeModel = new DefaultTreeModel(rootNode);
-        this.tree = new Tree(treeModel);
+        if (project == null || file == null) {
+            return;
+        }
 
-        setLayout(new BorderLayout());
-        setupUI();
-        setupListeners();
+        // Prevent adding project root
+        if (file.equals(project.getBaseDir())) {
+            return;
+        }
 
-        // Initial load
-        refreshTree();
-
-        // Subscribe to changes
-        project.getMessageBus().connect(this).subscribe(
-            AICodeFileService.AICODE_TOPIC,
-            this::refreshTree
-        );
-    }
-
-    private void setupUI() {
-        // 1. Configure Tree Appearance
-        tree.setRootVisible(true); // Show project root
-        tree.setShowsRootHandles(true);
-        tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
-        tree.setCellRenderer(new AICodeTreeCellRenderer());
-
-        // Empty text
-        tree.getEmptyText().setText("No context files. Right-click files in Project View to add.");
-
-        // 2. Scroll Pane
-        JBScrollPane scrollPane = new JBScrollPane(tree);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder());
-        add(scrollPane, BorderLayout.CENTER);
-
-        // 3. Toolbar
-        add(createToolbar(), BorderLayout.NORTH);
-    }
-
-    private JComponent createToolbar() {
-        DefaultActionGroup actionGroup = new DefaultActionGroup();
-
-        // Open Config
-        actionGroup.add(new AnAction("Open Configuration", "Open .aicode.json configuration file", AllIcons.General.Settings) {
-            @Override
-            public void actionPerformed(@NotNull AnActionEvent e) {
-                openAICodeFile();
-            }
-        });
-
-        actionGroup.addSeparator();
-
-        // Expand All / Collapse All
-        TreeExpander treeExpander = new TreeExpander() {
-            @Override
-            public void expandAll() {
-                TreeUtil.expandAll(tree);
-            }
-
-            @Override
-            public boolean canExpand() {
-                return true;
-            }
-
-            @Override
-            public void collapseAll() {
-                TreeUtil.collapseAll(tree, 1); // Keep root expanded
-            }
-
-            @Override
-            public boolean canCollapse() {
-                return true;
-            }
-        };
-
-        CommonActionsManager actionsManager = CommonActionsManager.getInstance();
-        AnAction expandAllAction = actionsManager.createExpandAllAction(treeExpander, tree);
-        AnAction collapseAllAction = actionsManager.createCollapseAllAction(treeExpander, tree);
-
-        actionGroup.add(expandAllAction);
-        actionGroup.add(collapseAllAction);
-
-        actionGroup.addSeparator();
-
-        // Refresh
-        actionGroup.add(new AnAction("Refresh", "Refresh tree", AllIcons.Actions.Refresh) {
-            @Override
-            public void actionPerformed(@NotNull AnActionEvent e) {
-                refreshTree();
-            }
-        });
-
-        ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar(
-                "AICodeToolbar",
-                actionGroup,
-                true
-        );
-        toolbar.setTargetComponent(this);
-
-        return toolbar.getComponent();
-    }
-
-    private void setupListeners() {
-        // Double-click to open file
-        tree.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    TreePath path = tree.getPathForLocation(e.getX(), e.getY());
-                    if (path != null) {
-                        DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
-                        openFileFromNode(node);
-                    }
-                }
-            }
-        });
-
-        // Right-click menu
-        tree.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                if (SwingUtilities.isRightMouseButton(e)) {
-                    TreePath path = tree.getPathForLocation(e.getX(), e.getY());
-                    if (path != null) {
-                        tree.setSelectionPath(path);
-                        showContextMenu(e, (DefaultMutableTreeNode) path.getLastPathComponent());
-                    }
-                }
-            }
-        });
-    }
-
-    private void showContextMenu(MouseEvent e, DefaultMutableTreeNode node) {
-        if (node == null || node.getUserObject() == null) return;
-        AICodeNodeData data = (AICodeNodeData) node.getUserObject();
-
-        JPopupMenu menu = new JPopupMenu();
-
-        // Determine text based on node type
-        String removeText = data.isDirectory ? "Remove Directory from AICode" : "Remove File from AICode";
-
-        JMenuItem removeItem = new JMenuItem(removeText);
-        removeItem.setIcon(AllIcons.Actions.Cancel);
-        removeItem.addActionListener(actionEvent -> {
-            removeNodeContext(node);
-        });
-
-        menu.add(removeItem);
-        menu.show(tree, e.getX(), e.getY());
-    }
-
-    private void removeNodeContext(DefaultMutableTreeNode node) {
         AICodeFileService service = AICodeFileService.getInstance(project);
-        List<String> pathsToRemove = new ArrayList<>();
-        collectPaths(node, pathsToRemove);
 
-        if (!pathsToRemove.isEmpty()) {
-            for (String path : pathsToRemove) {
-                service.removeFilePath(path);
-            }
-        }
-    }
+        // Batch operation to avoid multiple refreshes
+        List<String> currentPaths = new ArrayList<>(service.readFilePaths());
+        Set<String> existingSet = new HashSet<>(currentPaths);
+        List<String> newPathsToAdd = new ArrayList<>();
 
-    private void collectPaths(DefaultMutableTreeNode node, List<String> collector) {
-        Object userObject = node.getUserObject();
-        if (userObject instanceof AICodeNodeData) {
-            AICodeNodeData data = (AICodeNodeData) userObject;
-            // If it's a leaf (file) and has a valid path, add it
-            if (!data.isDirectory && data.fullRelativePath != null) {
-                collector.add(data.fullRelativePath);
-            }
-        }
-
-        // Recursively check children
-        for (int i = 0; i < node.getChildCount(); i++) {
-            collectPaths((DefaultMutableTreeNode) node.getChildAt(i), collector);
-        }
-    }
-
-    private void openFileFromNode(DefaultMutableTreeNode node) {
-        Object userObject = node.getUserObject();
-        if (userObject instanceof AICodeNodeData) {
-            AICodeNodeData data = (AICodeNodeData) userObject;
-            if (!data.isDirectory && data.virtualFile != null) {
-                FileEditorManager.getInstance(project).openFile(data.virtualFile, true);
-            }
-        }
-    }
-
-    public void refreshTree() {
-        // Run on EDT
-        SwingUtilities.invokeLater(() -> {
-            // Save expansion state (simple version: list of expanded paths)
-            // For now, we will just fully expand or keep simple.
-            // Rebuilding tree invalidates objects, so preserving state needs path-based logic.
-            // Let's implement a simple rebuild first.
-
-            rootNode.removeAllChildren();
-
-            AICodeFileService service = AICodeFileService.getInstance(project);
-            List<String> paths = service.readFilePaths();
-            Collections.sort(paths); // Sort to ensure folders come in order
-
-            // Update Root Display
-            AICodeNodeData rootData = (AICodeNodeData) rootNode.getUserObject();
-            rootData.displayName = project.getName();
-            rootData.virtualFile = project.getBaseDir();
-
-            buildTreeStructure(paths, service);
-
-            treeModel.reload();
-            TreeUtil.expandAll(tree); // Auto expand all on refresh
-        });
-    }
-
-    /**
-     * Reconstruct the tree from flat paths
-     */
-    private void buildTreeStructure(List<String> paths, AICodeFileService service) {
-        Map<String, DefaultMutableTreeNode> directoryNodes = new HashMap<>();
-
-        for (String path : paths) {
-            String[] parts = path.split("/");
-            DefaultMutableTreeNode currentNode = rootNode;
-            String currentPathAccumulator = "";
-
-            for (int i = 0; i < parts.length; i++) {
-                String part = parts[i];
-                boolean isLast = (i == parts.length - 1);
-
-                if (!currentPathAccumulator.isEmpty()) {
-                    currentPathAccumulator += "/";
-                }
-                currentPathAccumulator += part;
-
-                if (isLast) {
-                    // It's the file itself
-                    VirtualFile file = service.getFileFromPath(path);
-                    AICodeNodeData fileData = new AICodeNodeData(part, path, false);
-                    fileData.virtualFile = file;
-
-                    DefaultMutableTreeNode fileNode = new DefaultMutableTreeNode(fileData);
-                    currentNode.add(fileNode);
-                } else {
-                    // It's a directory
-                    String dirPath = currentPathAccumulator;
-
-                    if (directoryNodes.containsKey(dirPath)) {
-                        currentNode = directoryNodes.get(dirPath);
-                    } else {
-                        VirtualFile dirFile = service.getFileFromPath(dirPath);
-                        AICodeNodeData dirData = new AICodeNodeData(part, dirPath, true);
-                        dirData.virtualFile = dirFile;
-
-                        DefaultMutableTreeNode dirNode = new DefaultMutableTreeNode(dirData);
-                        directoryNodes.put(dirPath, dirNode);
-                        currentNode.add(dirNode);
-                        currentNode = dirNode;
+        if (file.isDirectory()) {
+            // Recursively visit directory
+            VfsUtilCore.visitChildrenRecursively(file, new VirtualFileVisitor<Void>() {
+                @Override
+                public boolean visitFile(@NotNull VirtualFile child) {
+                    if (!child.isDirectory() && !".aicode.json".equals(child.getName())) {
+                        String relativePath = service.getRelativePath(child);
+                        if (relativePath != null && !existingSet.contains(relativePath)) {
+                            newPathsToAdd.add(relativePath);
+                        }
                     }
+                    return true;
                 }
+            });
+        } else {
+            // Single file
+            String relativePath = service.getRelativePath(file);
+            if (relativePath != null && !existingSet.contains(relativePath)) {
+                newPathsToAdd.add(relativePath);
             }
         }
-    }
 
-    private void openAICodeFile() {
-        AICodeFileService service = AICodeFileService.getInstance(project);
-        VirtualFile aiCodeFile = service.getOrCreateAICodeFile();
-        if (aiCodeFile != null) {
-            FileEditorManager.getInstance(project).openFile(aiCodeFile, true);
+        if (!newPathsToAdd.isEmpty()) {
+            currentPaths.addAll(newPathsToAdd);
+            service.writeFilePaths(currentPaths);
         }
     }
 
     @Override
-    public void dispose() {
-        // Required by Disposable interface
-    }
+    public void update(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
 
-    /**
-     * Data holder for Tree Nodes
-     */
-    private static class AICodeNodeData {
-        String displayName;
-        String fullRelativePath;
-        boolean isDirectory;
-        VirtualFile virtualFile; // Can be null if file deleted
+        boolean visible = false;
+        if (project != null && file != null) {
+            // 1. Exclude Project Root
+            boolean isRoot = file.equals(project.getBaseDir());
+            // 2. Exclude config file
+            boolean isConfigFile = ".aicode.json".equals(file.getName());
 
-        public AICodeNodeData(String displayName, String fullRelativePath, boolean isDirectory) {
-            this.displayName = displayName;
-            this.fullRelativePath = fullRelativePath;
-            this.isDirectory = isDirectory;
-        }
+            if (!isRoot && !isConfigFile) {
+                AICodeFileService service = AICodeFileService.getInstance(project);
 
-        @Override
-        public String toString() {
-            return displayName;
-        }
-    }
-
-    /**
-     * Custom Renderer to mimic Project View
-     */
-    private static class AICodeTreeCellRenderer extends ColoredTreeCellRenderer {
-        @Override
-        public void customizeCellRenderer(@NotNull JTree tree,
-                                          Object value,
-                                          boolean selected,
-                                          boolean expanded,
-                                          boolean leaf,
-                                          int row,
-                                          boolean hasFocus) {
-            if (!(value instanceof DefaultMutableTreeNode)) return;
-
-            DefaultMutableTreeNode node = (DefaultMutableTreeNode) value;
-            Object userObject = node.getUserObject();
-
-            if (userObject instanceof AICodeNodeData) {
-                AICodeNodeData data = (AICodeNodeData) userObject;
-
-                // Icon
-                if (data.virtualFile != null) {
-                    if (data.isDirectory) {
-                        setIcon(AllIcons.Nodes.Folder);
-                    } else {
-                        setIcon(data.virtualFile.getFileType().getIcon());
-                    }
+                if (file.isDirectory()) {
+                    // For directory: Always show "Add" (simplified logic,
+                    // or checking if ANY file inside is missing could be expensive)
+                    visible = true;
                 } else {
-                    // File missing or virtual file not resolved
-                    setIcon(data.isDirectory ? AllIcons.Nodes.Folder : AllIcons.FileTypes.Unknown);
+                    // For file: Only show if NOT in list
+                    visible = !service.containsFile(file);
                 }
-
-                // Text
-                if (data.virtualFile == null && !data.displayName.equals("Project")) {
-                    // Missing file/dir
-                    append(data.displayName, SimpleTextAttributes.ERROR_ATTRIBUTES);
-                    append(" (missing)", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES);
-                } else {
-                    append(data.displayName, SimpleTextAttributes.REGULAR_ATTRIBUTES);
-                }
-
-                // Gray text for relative path hint on leaves (optional, maybe too cluttered)
-                // if (!data.isDirectory && selected) {
-                //    append("  " + data.fullRelativePath, SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES);
-                // }
             }
         }
+
+        e.getPresentation().setEnabledAndVisible(visible);
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
     }
 }
 """
 
+# 2. RemoveFromAICodeAction.java
+# 修改点：
+# - 支持递归删除文件夹下的所有已选文件
+REMOVE_ACTION_CONTENT = r"""package com.aicode.action;
+
+import com.aicode.service.AICodeFileService;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.project.DumbAware;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VfsUtilCore;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileVisitor;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
+
+/**
+ * Action to remove file or directory from AICode context
+ */
+public class RemoveFromAICodeAction extends AnAction implements DumbAware {
+
+    @Override
+    public void actionPerformed(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
+
+        if (project == null || file == null) {
+            return;
+        }
+
+        AICodeFileService service = AICodeFileService.getInstance(project);
+        List<String> currentPaths = service.readFilePaths();
+        Set<String> pathsToRemove = new HashSet<>();
+
+        if (file.isDirectory()) {
+            // Collect all relative paths inside this directory that need removal
+            String dirRelativePath = service.getRelativePath(file);
+            if (dirRelativePath != null) {
+                // Determine prefix (e.g., "src/main/java/")
+                String prefix = dirRelativePath.endsWith("/") ? dirRelativePath : dirRelativePath + "/";
+
+                for (String path : currentPaths) {
+                    if (path.startsWith(prefix) || path.equals(dirRelativePath)) {
+                        pathsToRemove.add(path);
+                    }
+                }
+            }
+        } else {
+            // Single file
+            String relativePath = service.getRelativePath(file);
+            if (relativePath != null) {
+                pathsToRemove.add(relativePath);
+            }
+        }
+
+        if (!pathsToRemove.isEmpty()) {
+            currentPaths.removeAll(pathsToRemove);
+            service.writeFilePaths(currentPaths);
+        }
+    }
+
+    @Override
+    public void update(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
+
+        boolean visible = false;
+        if (project != null && file != null) {
+            AICodeFileService service = AICodeFileService.getInstance(project);
+
+            if (file.isDirectory()) {
+                // If it's a directory, show "Remove" if ANY file inside is potentially tracked?
+                // Or simplified: Just show it if it's not root, user can try to remove.
+                // Better UX: check if directory path matches any prefix in the list.
+                boolean isRoot = file.equals(project.getBaseDir());
+                if (!isRoot) {
+                     String dirPath = service.getRelativePath(file);
+                     if (dirPath != null) {
+                         String prefix = dirPath.endsWith("/") ? dirPath : dirPath + "/";
+                         // Check if any tracked file starts with this directory
+                         List<String> paths = service.readFilePaths();
+                         for (String path : paths) {
+                             if (path.startsWith(prefix)) {
+                                 visible = true;
+                                 break;
+                             }
+                         }
+                     }
+                }
+            } else {
+                // Single file
+                visible = service.containsFile(file);
+            }
+        }
+
+        e.getPresentation().setEnabledAndVisible(visible);
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
+    }
+}
+"""
+
+UPDATES = {
+    "src/main/java/com/aicode/action/AddToAICodeAction.java": ADD_ACTION_CONTENT,
+    "src/main/java/com/aicode/action/RemoveFromAICodeAction.java": REMOVE_ACTION_CONTENT
+}
+
 def main():
-    target_path = "src/main/java/com/aicode/ui/AICodePanel.java"
-
     # 路径跨平台处理
-    full_path = os.path.join(*target_path.split("/"))
+    for relative_path, content in UPDATES.items():
+        full_path = os.path.join(*relative_path.split("/"))
 
-    if not os.path.exists(full_path):
-        print(f"错误: 找不到文件 {full_path}")
-        print("请确保在项目根目录运行此脚本。")
-        return
+        # 简单检查目录是否存在
+        if not os.path.exists(os.path.dirname(full_path)):
+            print(f"错误：找不到目录 {os.path.dirname(full_path)}")
+            continue
 
-    # 备份
-    backup_path = full_path + ".bak_tree"
-    try:
-        if os.path.exists(backup_path):
-            os.remove(backup_path)
-        os.rename(full_path, backup_path)
-        print(f"已备份原文件到: {backup_path}")
-    except OSError as e:
-        print(f"备份失败: {e}")
-        return
+        try:
+            with open(full_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            print(f"成功更新: {full_path}")
+        except IOError as e:
+            print(f"写入失败 {full_path}: {e}")
 
-    # 写入新文件
-    try:
-        with open(full_path, "w", encoding="utf-8") as f:
-            f.write(AICODE_PANEL_CONTENT)
-        print("UI 树状结构更新成功！")
-        print("请重新加载 Gradle 项目或构建插件。")
-    except IOError as e:
-        print(f"写入文件失败: {e}")
+    print("\n完成。右键菜单现在支持目录操作（已排除根目录）。")
+    print("请重新构建插件。")
 
 if __name__ == "__main__":
     main()
