@@ -35,10 +35,13 @@
     </extensions>
 
     <actions>
-        <!-- Project View Context Menu Group -->
-        <!-- Moved to CutCopyPasteGroup as requested -->
         <group id="AICodeGroup" text="AICode" popup="true">
+            <!-- 1. Project View: Keep in CutCopyPaste group at the bottom -->
             <add-to-group group-id="CutCopyPasteGroup" anchor="last"/>
+
+            <!-- 2. Editor Tab: Force to FIRST position (Top of the menu) -->
+            <!-- This guarantees it appears above 'Close' which is usually the first standard item -->
+            <add-to-group group-id="EditorTabPopupMenu" anchor="first"/>
 
             <action id="com.aicode.action.AddToAICodeAction"
                     class="com.aicode.action.AddToAICodeAction"
