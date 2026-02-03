@@ -11,5 +11,6 @@
   "src/main/java/com/aicode/util/ClipboardService.java",
   "src/main/java/com/aicode/util/CodeLanguageResolver.java",
   "src/main/java/com/aicode/util/MarkdownBuilder.java",
-  "src/main/resources/META-INF/plugin.xml"
+  "src/main/resources/META-INF/plugin.xml",
+  "todo/v2.md"
 ]
