@@ -1,23 +1,9 @@
 import os
+import sys
 
-# 定义工程根目录
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-
-def write_file(relative_path, content):
-    full_path = os.path.join(PROJECT_ROOT, relative_path)
-    # 确保目录存在
-    os.makedirs(os.path.dirname(full_path), exist_ok=True)
-
-    with open(full_path, 'w', encoding='utf-8') as f:
-        f.write(content.strip())
-    print(f"✅ Replaced: {relative_path}")
-
-# ==========================================
-# 1. AICodeFileService.java
-# 修改：将 notifyChange() 改为 public，以便 Listener 可以调用
-# ==========================================
-service_content = """
-package com.aicode.service;
+# 定义要更新的文件路径和内容
+UPDATES = {
+    "src/main/java/com/aicode/service/AICodeFileService.java": r"""package com.aicode.service;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -102,8 +88,8 @@ public class AICodeFileService {
             return new ArrayList<>();
         }
 
-        // Force refresh to ensure we read latest content from disk if externally modified
-        aiCodeFile.refresh(false, false);
+        // FIX: Removed synchronous refresh on EDT which caused "Write-unsafe context" crash.
+        // We rely on BulkFileListener and VFS events to keep things in sync.
 
         try {
             String content = new String(aiCodeFile.contentsToByteArray(), StandardCharsets.UTF_8);
@@ -254,172 +240,47 @@ public class AICodeFileService {
     }
 }
 """
-
-# ==========================================
-# 2. AICodeFileListener.java
-# 修改：增加对 VFileContentChangeEvent 的处理
-# ==========================================
-listener_content = """
-package com.aicode.listener;
-
-import com.aicode.service.AICodeFileService;
-import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ProjectManager;
-import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.openapi.vfs.newvfs.BulkFileListener;
-import com.intellij.openapi.vfs.newvfs.events.*;
-import org.jetbrains.annotations.NotNull;
-
-import java.util.List;
-
-/**
- * Listener for file system events to auto-maintain .aicode.json
- */
-public class AICodeFileListener implements BulkFileListener {
-
-    @Override
-    public void after(@NotNull List<? extends VFileEvent> events) {
-        for (VFileEvent event : events) {
-            handleEvent(event);
-        }
-    }
-
-    private void handleEvent(@NotNull VFileEvent event) {
-        VirtualFile file = event.getFile();
-        if (file == null || file.isDirectory()) {
-            return;
-        }
-
-        Project project = findProject(file);
-        if (project == null) {
-            return;
-        }
-
-        AICodeFileService service = AICodeFileService.getInstance(project);
-
-        if (event instanceof VFileDeleteEvent) {
-            handleDelete(service, file);
-        } else if (event instanceof VFileMoveEvent) {
-            handleMove(service, (VFileMoveEvent) event);
-        } else if (event instanceof VFilePropertyChangeEvent) {
-            handlePropertyChange(service, (VFilePropertyChangeEvent) event);
-        } else if (event instanceof VFileContentChangeEvent) {
-            // 新增：处理内容变化
-            handleContentChange(service, file);
-        }
-    }
-
-    /**
-     * 监听文件内容变化，如果是 .aicode.json 被手动修改，则刷新 UI
-     */
-    private void handleContentChange(@NotNull AICodeFileService service, @NotNull VirtualFile file) {
-        if (".aicode.json".equals(file.getName())) {
-            // 配置文件内容改变，强制通知 UI 刷新
-            service.notifyChange();
-        }
-    }
-
-    private void handleDelete(@NotNull AICodeFileService service, @NotNull VirtualFile file) {
-        String relativePath = service.getRelativePath(file);
-        if (relativePath != null && service.readFilePaths().contains(relativePath)) {
-            service.removeFilePath(relativePath);
-        }
-    }
-
-    private void handleMove(@NotNull AICodeFileService service, @NotNull VFileMoveEvent event) {
-        VirtualFile file = event.getFile();
-        if (file == null) {
-            return;
-        }
-
-        Project project = findProject(file);
-        if (project == null) {
-            return;
-        }
-
-        // Calculate old path
-        VirtualFile oldParent = event.getOldParent();
-        String oldPath = oldParent.getPath() + "/" + file.getName();
-
-        VirtualFile baseDir = project.getBaseDir();
-        if (baseDir != null && oldPath.startsWith(baseDir.getPath())) {
-            String oldRelativePath = oldPath.substring(baseDir.getPath().length() + 1);
-            String newRelativePath = service.getRelativePath(file);
-
-            if (newRelativePath != null && service.readFilePaths().contains(oldRelativePath)) {
-                service.updateFilePath(oldRelativePath, newRelativePath);
-            }
-        }
-    }
-
-    private void handlePropertyChange(@NotNull AICodeFileService service, @NotNull VFilePropertyChangeEvent event) {
-        if (!VirtualFile.PROP_NAME.equals(event.getPropertyName())) {
-            return;
-        }
-
-        VirtualFile file = event.getFile();
-        String oldName = (String) event.getOldValue();
-        String newName = (String) event.getNewValue();
-
-        if (oldName == null || newName == null || oldName.equals(newName)) {
-            return;
-        }
-
-        Project project = findProject(file);
-        if (project == null) {
-            return;
-        }
-
-        // Calculate old path
-        VirtualFile parent = file.getParent();
-        if (parent == null) {
-            return;
-        }
-
-        String parentPath = parent.getPath();
-        VirtualFile baseDir = project.getBaseDir();
-
-        if (baseDir != null && parentPath.startsWith(baseDir.getPath())) {
-            String relativePath = parentPath.substring(baseDir.getPath().length());
-            if (relativePath.startsWith("/")) {
-                relativePath = relativePath.substring(1);
-            }
-
-            String oldRelativePath = relativePath.isEmpty() ? oldName : relativePath + "/" + oldName;
-            String newRelativePath = service.getRelativePath(file);
-
-            if (newRelativePath != null && service.readFilePaths().contains(oldRelativePath)) {
-                service.updateFilePath(oldRelativePath, newRelativePath);
-            }
-        }
-    }
-
-    @org.jetbrains.annotations.Nullable
-    private Project findProject(@NotNull VirtualFile file) {
-        for (Project project : ProjectManager.getInstance().getOpenProjects()) {
-            VirtualFile baseDir = project.getBaseDir();
-            if (baseDir != null && file.getPath().startsWith(baseDir.getPath())) {
-                return project;
-            }
-        }
-        return null;
-    }
 }
-"""
 
 def main():
-    print("🚀 Updating AICode Logic to support manual .aicode.json editing...")
+    # 简单的环境检查
+    if not os.path.exists("build.gradle.kts") and not os.path.exists("pom.xml"):
+        print("警告：未在当前目录找到 build.gradle.kts 或 pom.xml，请确认你在项目根目录下运行。")
+        confirm = input("是否继续？(y/n): ")
+        if confirm.lower() != 'y':
+            sys.exit(0)
 
-    files_to_update = {
-        "src/main/java/com/aicode/service/AICodeFileService.java": service_content,
-        "src/main/java/com/aicode/listener/AICodeFileListener.java": listener_content
-    }
+    for file_path, content in UPDATES.items():
+        # 处理跨平台路径分隔符
+        full_path = os.path.join(*file_path.split("/"))
 
-    for path, content in files_to_update.items():
-        write_file(path, content)
+        # 确保目录存在
+        directory = os.path.dirname(full_path)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+            print(f"创建目录: {directory}")
 
-    print("\n🎉 Service and Listener updated successfully!")
-    print("Please run './gradlew buildPlugin' to rebuild.")
+        # 如果文件存在，创建备份
+        if os.path.exists(full_path):
+            backup_path = full_path + ".bak"
+            try:
+                # 如果之前的备份存在，先删除，防止报错
+                if os.path.exists(backup_path):
+                    os.remove(backup_path)
+                os.rename(full_path, backup_path)
+                print(f"备份旧文件至: {backup_path}")
+            except OSError as e:
+                print(f"无法创建备份: {e}")
+
+        # 写入新内容
+        try:
+            with open(full_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            print(f"成功更新: {full_path}")
+        except IOError as e:
+            print(f"写入文件失败 {full_path}: {e}")
+
+    print("\n完成。请在 IDE 中重新加载 Gradle 项目或重新构建插件。")
 
 if __name__ == "__main__":
     main()

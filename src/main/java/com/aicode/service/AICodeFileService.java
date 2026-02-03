@@ -83,8 +83,8 @@ public class AICodeFileService {
             return new ArrayList<>();
         }
 
-        // Force refresh to ensure we read latest content from disk if externally modified
-        aiCodeFile.refresh(false, false);
+        // FIX: Removed synchronous refresh on EDT which caused "Write-unsafe context" crash.
+        // We rely on BulkFileListener and VFS events to keep things in sync.
 
         try {
             String content = new String(aiCodeFile.contentsToByteArray(), StandardCharsets.UTF_8);
