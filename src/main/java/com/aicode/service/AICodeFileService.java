@@ -83,6 +83,9 @@ public class AICodeFileService {
             return new ArrayList<>();
         }
 
+        // Force refresh to ensure we read latest content from disk if externally modified
+        aiCodeFile.refresh(false, false);
+
         try {
             String content = new String(aiCodeFile.contentsToByteArray(), StandardCharsets.UTF_8);
             Type listType = new TypeToken<ArrayList<String>>() {}.getType();
@@ -174,7 +177,12 @@ public class AICodeFileService {
         });
     }
 
-    private void notifyChange() {
+    /**
+     * Public method to trigger context change notification.
+     * Used by listeners when external changes happen to .aicode.json
+     */
+    public void notifyChange() {
+        if (project.isDisposed()) return;
         project.getMessageBus().syncPublisher(AICODE_TOPIC).onContextChanged();
     }
 

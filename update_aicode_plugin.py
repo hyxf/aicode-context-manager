@@ -1,6 +1,6 @@
 import os
 
-# 定义工程根目录（假设脚本放在工程根目录）
+# 定义工程根目录
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 def write_file(relative_path, content):
@@ -13,303 +13,412 @@ def write_file(relative_path, content):
     print(f"✅ Replaced: {relative_path}")
 
 # ==========================================
-# 1. AddToAICodeAction.java
-# 修复：实现 DumbAware，添加 getActionUpdateThread (BGT)
+# 1. AICodeFileService.java
+# 修改：将 notifyChange() 改为 public，以便 Listener 可以调用
 # ==========================================
-add_action_content = """
-package com.aicode.action;
+service_content = """
+package com.aicode.service;
 
-import com.aicode.service.AICodeFileService;
-import com.intellij.openapi.actionSystem.ActionUpdateThread;
-import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.CommonDataKeys;
-import com.intellij.openapi.project.DumbAware;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
+import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.util.messages.Topic;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+
+import java.io.IOException;
+import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Action to add file to AICode context
+ * Service for managing .aicode.json file operations
  */
-public class AddToAICodeAction extends AnAction implements DumbAware {
+public class AICodeFileService {
+    private static final String AICODE_FILE_NAME = ".aicode.json";
+    private final Project project;
+    private final Gson gson;
 
-    @Override
-    public void actionPerformed(@NotNull AnActionEvent e) {
-        Project project = e.getProject();
-        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
+    // Topic for notifications
+    public static final Topic<AICodeStateListener> AICODE_TOPIC =
+            Topic.create("AICode Context Changed", AICodeStateListener.class);
 
-        if (project == null || file == null || file.isDirectory()) {
+    public interface AICodeStateListener {
+        void onContextChanged();
+    }
+
+    public AICodeFileService(Project project) {
+        this.project = project;
+        this.gson = new GsonBuilder().setPrettyPrinting().create();
+    }
+
+    @NotNull
+    public static AICodeFileService getInstance(@NotNull Project project) {
+        return project.getService(AICodeFileService.class);
+    }
+
+    /**
+     * Get or create .aicode.json file in project root
+     */
+    @Nullable
+    public VirtualFile getOrCreateAICodeFile() {
+        VirtualFile baseDir = project.getBaseDir();
+        if (baseDir == null) {
+            return null;
+        }
+
+        VirtualFile aiCodeFile = baseDir.findChild(AICODE_FILE_NAME);
+        if (aiCodeFile != null) {
+            return aiCodeFile;
+        }
+
+        // Create new file with empty array
+        try {
+            return WriteCommandAction.writeCommandAction(project).compute(() -> {
+                try {
+                    VirtualFile newFile = baseDir.createChildData(this, AICODE_FILE_NAME);
+                    newFile.setBinaryContent("[]".getBytes(StandardCharsets.UTF_8));
+                    return newFile;
+                } catch (IOException e) {
+                    return null;
+                }
+            });
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Read file paths from .aicode.json
+     */
+    @NotNull
+    public List<String> readFilePaths() {
+        VirtualFile aiCodeFile = getOrCreateAICodeFile();
+        if (aiCodeFile == null) {
+            return new ArrayList<>();
+        }
+
+        // Force refresh to ensure we read latest content from disk if externally modified
+        aiCodeFile.refresh(false, false);
+
+        try {
+            String content = new String(aiCodeFile.contentsToByteArray(), StandardCharsets.UTF_8);
+            Type listType = new TypeToken<ArrayList<String>>() {}.getType();
+            List<String> paths = gson.fromJson(content, listType);
+            return paths != null ? paths : new ArrayList<>();
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Write file paths to .aicode.json
+     */
+    public void writeFilePaths(@NotNull List<String> paths) {
+        VirtualFile aiCodeFile = getOrCreateAICodeFile();
+        if (aiCodeFile == null) {
             return;
         }
 
-        AICodeFileService service = AICodeFileService.getInstance(project);
-        service.addFile(file);
-    }
-
-    @Override
-    public void update(@NotNull AnActionEvent e) {
-        Project project = e.getProject();
-        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
-
-        boolean visible = false;
-        if (project != null && file != null && !file.isDirectory()) {
-            // Prevent adding the configuration file itself
-            if (!".aicode.json".equals(file.getName())) {
-                AICodeFileService service = AICodeFileService.getInstance(project);
-                // Only show "Add" if file is not already in the list
-                visible = !service.containsFile(file);
+        WriteCommandAction.runWriteCommandAction(project, () -> {
+            try {
+                String json = gson.toJson(paths);
+                aiCodeFile.setBinaryContent(json.getBytes(StandardCharsets.UTF_8));
+                // Notify listeners
+                notifyChange();
+            } catch (IOException e) {
+                // Handle error
             }
-        }
-
-        e.getPresentation().setEnabledAndVisible(visible);
+        });
     }
 
-    @Override
-    public @NotNull ActionUpdateThread getActionUpdateThread() {
-        return ActionUpdateThread.BGT;
-    }
-}
-"""
-
-# ==========================================
-# 2. RemoveFromAICodeAction.java
-# 修复：实现 DumbAware，添加 getActionUpdateThread (BGT)
-# ==========================================
-remove_action_content = """
-package com.aicode.action;
-
-import com.aicode.service.AICodeFileService;
-import com.intellij.openapi.actionSystem.ActionUpdateThread;
-import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.CommonDataKeys;
-import com.intellij.openapi.project.DumbAware;
-import com.intellij.openapi.project.Project;
-import com.intellij.openapi.vfs.VirtualFile;
-import org.jetbrains.annotations.NotNull;
-
-/**
- * Action to remove file from AICode context
- */
-public class RemoveFromAICodeAction extends AnAction implements DumbAware {
-
-    @Override
-    public void actionPerformed(@NotNull AnActionEvent e) {
-        Project project = e.getProject();
-        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
-
-        if (project == null || file == null) {
+    /**
+     * Add file to .aicode.json
+     */
+    public void addFile(@NotNull VirtualFile file) {
+        String relativePath = getRelativePath(file);
+        if (relativePath == null) {
             return;
         }
 
-        AICodeFileService service = AICodeFileService.getInstance(project);
-        service.removeFile(file);
+        WriteCommandAction.runWriteCommandAction(project, "Add to AICode", null, () -> {
+            List<String> paths = readFilePaths();
+            if (!paths.contains(relativePath)) {
+                paths.add(relativePath);
+                writeFilePaths(paths);
+                // writeFilePaths calls notify, but wrapped here ensures consistency
+            }
+        });
     }
 
-    @Override
-    public void update(@NotNull AnActionEvent e) {
-        Project project = e.getProject();
-        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
-
-        boolean visible = false;
-        if (project != null && file != null) {
-            AICodeFileService service = AICodeFileService.getInstance(project);
-            // Only show "Remove" if file is in the list
-            visible = service.containsFile(file);
+    /**
+     * Remove file from .aicode.json
+     */
+    public void removeFile(@NotNull VirtualFile file) {
+        String relativePath = getRelativePath(file);
+        if (relativePath == null) {
+            return;
         }
 
-        e.getPresentation().setEnabledAndVisible(visible);
+        WriteCommandAction.runWriteCommandAction(project, "Remove from AICode", null, () -> {
+            List<String> paths = readFilePaths();
+            paths.remove(relativePath);
+            writeFilePaths(paths);
+        });
     }
 
-    @Override
-    public @NotNull ActionUpdateThread getActionUpdateThread() {
-        return ActionUpdateThread.BGT;
+    /**
+     * Remove file path from .aicode.json (for file system events)
+     */
+    public void removeFilePath(@NotNull String path) {
+        WriteCommandAction.runWriteCommandAction(project, () -> {
+            List<String> paths = readFilePaths();
+            paths.remove(path);
+            writeFilePaths(paths);
+        });
+    }
+
+    /**
+     * Update file path in .aicode.json (for rename/move events)
+     */
+    public void updateFilePath(@NotNull String oldPath, @NotNull String newPath) {
+        WriteCommandAction.runWriteCommandAction(project, () -> {
+            List<String> paths = readFilePaths();
+            int index = paths.indexOf(oldPath);
+            if (index >= 0) {
+                paths.set(index, newPath);
+                writeFilePaths(paths);
+            }
+        });
+    }
+
+    /**
+     * Public method to trigger context change notification.
+     * Used by listeners when external changes happen to .aicode.json
+     */
+    public void notifyChange() {
+        if (project.isDisposed()) return;
+        project.getMessageBus().syncPublisher(AICODE_TOPIC).onContextChanged();
+    }
+
+    /**
+     * Check if file is in .aicode.json
+     */
+    public boolean containsFile(@NotNull VirtualFile file) {
+        String relativePath = getRelativePath(file);
+        if (relativePath == null) {
+            return false;
+        }
+        return readFilePaths().contains(relativePath);
+    }
+
+    /**
+     * Get relative path from project base path
+     */
+    @Nullable
+    public String getRelativePath(@NotNull VirtualFile file) {
+        VirtualFile baseDir = project.getBaseDir();
+        if (baseDir == null) {
+            return null;
+        }
+
+        String basePath = baseDir.getPath();
+        String filePath = file.getPath();
+
+        if (!filePath.startsWith(basePath)) {
+            return null;
+        }
+
+        String relativePath = filePath.substring(basePath.length());
+        if (relativePath.startsWith("/")) {
+            relativePath = relativePath.substring(1);
+        }
+
+        return relativePath;
+    }
+
+    /**
+     * Get VirtualFile from relative path
+     */
+    @Nullable
+    public VirtualFile getFileFromPath(@NotNull String relativePath) {
+        VirtualFile baseDir = project.getBaseDir();
+        if (baseDir == null) {
+            return null;
+        }
+        return baseDir.findFileByRelativePath(relativePath);
     }
 }
 """
 
 # ==========================================
-# 3. CopyMarkdownAction.java
-# 修复：实现 DumbAware，添加 getActionUpdateThread (BGT)
+# 2. AICodeFileListener.java
+# 修改：增加对 VFileContentChangeEvent 的处理
 # ==========================================
-copy_action_content = """
-package com.aicode.action;
+listener_content = """
+package com.aicode.listener;
 
 import com.aicode.service.AICodeFileService;
-import com.aicode.util.ClipboardService;
-import com.aicode.util.MarkdownBuilder;
-import com.intellij.notification.Notification;
-import com.intellij.notification.NotificationType;
-import com.intellij.notification.Notifications;
-import com.intellij.openapi.actionSystem.ActionUpdateThread;
-import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.CommonDataKeys;
-import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.newvfs.BulkFileListener;
+import com.intellij.openapi.vfs.newvfs.events.*;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
 
 /**
- * Action to copy AICode context as Markdown to clipboard
+ * Listener for file system events to auto-maintain .aicode.json
  */
-public class CopyMarkdownAction extends AnAction implements DumbAware {
+public class AICodeFileListener implements BulkFileListener {
 
     @Override
-    public void actionPerformed(@NotNull AnActionEvent e) {
-        Project project = e.getProject();
+    public void after(@NotNull List<? extends VFileEvent> events) {
+        for (VFileEvent event : events) {
+            handleEvent(event);
+        }
+    }
+
+    private void handleEvent(@NotNull VFileEvent event) {
+        VirtualFile file = event.getFile();
+        if (file == null || file.isDirectory()) {
+            return;
+        }
+
+        Project project = findProject(file);
         if (project == null) {
             return;
         }
 
         AICodeFileService service = AICodeFileService.getInstance(project);
-        List<String> filePaths = service.readFilePaths();
 
-        if (filePaths.isEmpty()) {
-            showNotification(project, "No files in AICode context", NotificationType.WARNING);
+        if (event instanceof VFileDeleteEvent) {
+            handleDelete(service, file);
+        } else if (event instanceof VFileMoveEvent) {
+            handleMove(service, (VFileMoveEvent) event);
+        } else if (event instanceof VFilePropertyChangeEvent) {
+            handlePropertyChange(service, (VFilePropertyChangeEvent) event);
+        } else if (event instanceof VFileContentChangeEvent) {
+            // 新增：处理内容变化
+            handleContentChange(service, file);
+        }
+    }
+
+    /**
+     * 监听文件内容变化，如果是 .aicode.json 被手动修改，则刷新 UI
+     */
+    private void handleContentChange(@NotNull AICodeFileService service, @NotNull VirtualFile file) {
+        if (".aicode.json".equals(file.getName())) {
+            // 配置文件内容改变，强制通知 UI 刷新
+            service.notifyChange();
+        }
+    }
+
+    private void handleDelete(@NotNull AICodeFileService service, @NotNull VirtualFile file) {
+        String relativePath = service.getRelativePath(file);
+        if (relativePath != null && service.readFilePaths().contains(relativePath)) {
+            service.removeFilePath(relativePath);
+        }
+    }
+
+    private void handleMove(@NotNull AICodeFileService service, @NotNull VFileMoveEvent event) {
+        VirtualFile file = event.getFile();
+        if (file == null) {
             return;
         }
 
-        try {
-            String markdown = MarkdownBuilder.buildMarkdown(
-                    project,
-                    filePaths,
-                    service::getFileFromPath
-            );
+        Project project = findProject(file);
+        if (project == null) {
+            return;
+        }
 
-            ClipboardService.copyToClipboard(markdown);
+        // Calculate old path
+        VirtualFile oldParent = event.getOldParent();
+        String oldPath = oldParent.getPath() + "/" + file.getName();
 
-            String message = String.format("AICode Markdown copied to clipboard (%d files)", filePaths.size());
-            showNotification(project, message, NotificationType.INFORMATION);
+        VirtualFile baseDir = project.getBaseDir();
+        if (baseDir != null && oldPath.startsWith(baseDir.getPath())) {
+            String oldRelativePath = oldPath.substring(baseDir.getPath().length() + 1);
+            String newRelativePath = service.getRelativePath(file);
 
-        } catch (Exception ex) {
-            showNotification(project, "Failed to export Markdown: " + ex.getMessage(), NotificationType.ERROR);
+            if (newRelativePath != null && service.readFilePaths().contains(oldRelativePath)) {
+                service.updateFilePath(oldRelativePath, newRelativePath);
+            }
         }
     }
 
-    @Override
-    public void update(@NotNull AnActionEvent e) {
-        Project project = e.getProject();
-        VirtualFile file = e.getData(CommonDataKeys.VIRTUAL_FILE);
-
-        boolean visible = false;
-        if (project != null && file != null && !file.isDirectory()) {
-            // Only show for .aicode.json file
-            visible = ".aicode.json".equals(file.getName());
+    private void handlePropertyChange(@NotNull AICodeFileService service, @NotNull VFilePropertyChangeEvent event) {
+        if (!VirtualFile.PROP_NAME.equals(event.getPropertyName())) {
+            return;
         }
 
-        e.getPresentation().setEnabledAndVisible(visible);
+        VirtualFile file = event.getFile();
+        String oldName = (String) event.getOldValue();
+        String newName = (String) event.getNewValue();
+
+        if (oldName == null || newName == null || oldName.equals(newName)) {
+            return;
+        }
+
+        Project project = findProject(file);
+        if (project == null) {
+            return;
+        }
+
+        // Calculate old path
+        VirtualFile parent = file.getParent();
+        if (parent == null) {
+            return;
+        }
+
+        String parentPath = parent.getPath();
+        VirtualFile baseDir = project.getBaseDir();
+
+        if (baseDir != null && parentPath.startsWith(baseDir.getPath())) {
+            String relativePath = parentPath.substring(baseDir.getPath().length());
+            if (relativePath.startsWith("/")) {
+                relativePath = relativePath.substring(1);
+            }
+
+            String oldRelativePath = relativePath.isEmpty() ? oldName : relativePath + "/" + oldName;
+            String newRelativePath = service.getRelativePath(file);
+
+            if (newRelativePath != null && service.readFilePaths().contains(oldRelativePath)) {
+                service.updateFilePath(oldRelativePath, newRelativePath);
+            }
+        }
     }
 
-    @Override
-    public @NotNull ActionUpdateThread getActionUpdateThread() {
-        return ActionUpdateThread.BGT;
-    }
-
-    private void showNotification(@NotNull Project project, @NotNull String content, @NotNull NotificationType type) {
-        Notification notification = new Notification(
-                "AICode",
-                "AICode Context Manager",
-                content,
-                type
-        );
-        Notifications.Bus.notify(notification, project);
+    @org.jetbrains.annotations.Nullable
+    private Project findProject(@NotNull VirtualFile file) {
+        for (Project project : ProjectManager.getInstance().getOpenProjects()) {
+            VirtualFile baseDir = project.getBaseDir();
+            if (baseDir != null && file.getPath().startsWith(baseDir.getPath())) {
+                return project;
+            }
+        }
+        return null;
     }
 }
 """
 
-# ==========================================
-# 4. plugin.xml
-# 修复：将错误的 VirtualFileListener 修正为 BulkFileListener
-# ==========================================
-plugin_xml_content = """
-<idea-plugin>
-    <id>com.aicode.context-manager</id>
-    <name>AICode Context Manager</name>
-    <vendor email="support@aicode.com" url="https://aicode.com">AICode</vendor>
-
-    <description><![CDATA[
-    <h2>AICode Context Manager</h2>
-    <p>Manage code context files for AI assistance with one-click Markdown export.</p>
-    <br/>
-    <h3>Features:</h3>
-    <ul>
-      <li>Add/Remove files to AI context via right-click menu</li>
-      <li>Visualize context files in Tool Window</li>
-      <li>Support multi-module projects</li>
-      <li>Auto-sync file changes (rename, move, delete)</li>
-      <li>Export all context files as Markdown code package</li>
-      <li>Undo support for all operations</li>
-    </ul>
-    ]]></description>
-
-    <depends>com.intellij.modules.platform</depends>
-    <depends>com.intellij.modules.java</depends>
-
-    <extensions defaultExtensionNs="com.intellij">
-        <!-- Tool Window -->
-        <toolWindow
-                id="AICode Context"
-                anchor="right"
-                icon="/icons/aicode.svg"
-                factoryClass="com.aicode.ui.AICodeToolWindowFactory"/>
-
-        <!-- Project Service -->
-        <projectService
-                serviceImplementation="com.aicode.service.AICodeFileService"/>
-    </extensions>
-
-    <actions>
-        <!-- Project View Context Menu Group -->
-        <group id="AICodeGroup" text="AICode" popup="true">
-            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
-
-            <action id="com.aicode.action.AddToAICodeAction"
-                    class="com.aicode.action.AddToAICodeAction"
-                    text="Add to AICode"
-                    description="Add file to AICode context">
-            </action>
-
-            <action id="com.aicode.action.RemoveFromAICodeAction"
-                    class="com.aicode.action.RemoveFromAICodeAction"
-                    text="Remove from AICode"
-                    description="Remove file from AICode context">
-            </action>
-
-            <action id="com.aicode.action.CopyMarkdownAction"
-                    class="com.aicode.action.CopyMarkdownAction"
-                    text="Copy as Markdown"
-                    description="Export AICode context as Markdown">
-            </action>
-        </group>
-    </actions>
-
-    <projectListeners>
-        <!-- Updated to BulkFileListener to match Java implementation -->
-        <listener class="com.aicode.listener.AICodeFileListener"
-                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
-    </projectListeners>
-</idea-plugin>
-"""
-
 def main():
-    print("🚀 Starting direct file replacement...")
+    print("🚀 Updating AICode Logic to support manual .aicode.json editing...")
 
-    # 路径映射
     files_to_update = {
-        "src/main/java/com/aicode/action/AddToAICodeAction.java": add_action_content,
-        "src/main/java/com/aicode/action/RemoveFromAICodeAction.java": remove_action_content,
-        "src/main/java/com/aicode/action/CopyMarkdownAction.java": copy_action_content,
-        "src/main/resources/META-INF/plugin.xml": plugin_xml_content
+        "src/main/java/com/aicode/service/AICodeFileService.java": service_content,
+        "src/main/java/com/aicode/listener/AICodeFileListener.java": listener_content
     }
 
     for path, content in files_to_update.items():
         write_file(path, content)
 
-    print("\n🎉 All files updated successfully!")
+    print("\n🎉 Service and Listener updated successfully!")
     print("Please run './gradlew buildPlugin' to rebuild.")
 
 if __name__ == "__main__":
