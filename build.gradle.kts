@@ -21,7 +21,7 @@ dependencies {
 intellij {
     version.set("2023.2")
     type.set("IC")
-    plugins.set(listOf("java"))
+    plugins.set(emptyList())
 }
 
 tasks {
