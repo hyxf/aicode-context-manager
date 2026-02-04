@@ -3,243 +3,77 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![IntelliJ Platform](https://img.shields.io/badge/platform-IntelliJ-orange.svg)
 
-A powerful IntelliJ IDEA plugin for managing AI code context files with one-click Markdown export.
-
-## 🎯 Overview
-
-AICode Context Manager helps you maintain a curated collection of code files to provide as context to AI assistants. It manages a `.aicode.json` file in your project root and offers seamless integration with IntelliJ IDEA's interface.
-
-## ✨ Features
-
-### 📁 File Management
-- **Add to Context**: Right-click any file in Project View → AICode → Add to AICode
-- **Remove from Context**: Right-click managed files → AICode → Remove from AICode
-- **Smart Menu**: Only shows relevant actions (Add vs Remove) based on file status
-- **Undo Support**: All operations support IntelliJ's undo/redo
-
-### 🖼️ Visual Tool Window
-- **AICode Context** tool window displays all managed files
-- Shows module name for multi-module projects: `[module-name] FileName.java`
-- Click to open files
-- Right-click to remove files
-- Toolbar button to open `.aicode.json` directly
-- Auto-refreshes when files change
-
-### 🔄 Auto-Sync
-- **File Deletion**: Automatically removes deleted files from context
-- **File Rename**: Updates paths when files are renamed
-- **File Move**: Updates paths when files are moved to different directories
-- All changes sync immediately to `.aicode.json`
-
-### 📋 Markdown Export
-- **One-Click Export**: Right-click `.aicode.json` → AICode → Copy as Markdown
-- Generates complete Markdown document with all file contents
-- Copies directly to system clipboard
-- Supports all major file types with proper syntax highlighting
-- Shows notification with file count
-
-## 🚀 Getting Started
-
-### Installation
-
-1. Download the plugin from JetBrains Marketplace (or build from source)
-2. Install via `Settings → Plugins → Install Plugin from Disk`
-3. Restart IntelliJ IDEA
-
-### Quick Start
-
-1. **Add files to context**:
-   - Right-click any code file in Project View
-   - Select `AICode → Add to AICode`
-
-2. **View your context**:
-   - Open the `AICode Context` tool window (right sidebar)
-   - See all managed files with their module names
-
-3. **Export as Markdown**:
-   - Right-click `.aicode.json` in Project View
-   - Select `AICode → Copy as Markdown`
-   - Paste into your AI assistant
-
-## 📄 `.aicode.json` Format
-
-The plugin manages a simple JSON array in your project root:
-
-```json
-[
-  "finance-module-settle-api/src/main/java/com/tongtong/settle/api/SettleBillRuleApi.java",
-  "finance-module-settle-api/src/main/java/com/tongtong/settle/model/request/SettleBillRuleV2Request.java"
-]
-```
-
-**Rules:**
-- File paths are relative to project root
-- Plain JSON string array (no objects, no comments)
-- Auto-created with `[]` if missing
-- Managed automatically by the plugin
-
-## 📋 Markdown Export Format
-
-```markdown
-# AICode Context Export
-
-> Generated from .aicode.json  
-> Project: MyProject  
-> File Count: 2  
+一款强大的 IntelliJ IDEA 插件，用于管理 AI 代码上下文文件，并支持一键导出为 Markdown。
 
 ---
 
-## 📄 src/main/java/Example.java
+## 🎯 插件简介
 
-```java
-public class Example {
-    // Full file contents
-}
-```
+AICode Context Manager 帮助你维护一组可供 AI 助手使用的代码文件集合。
+它会在项目根目录管理一个 `.aicode.json` 文件，并与 IntelliJ IDEA 界面深度集成，使用顺畅自然。
 
 ---
 
-## 📄 src/main/kotlin/Demo.kt
+## ✨ 功能特性
 
-```kotlin
-class Demo {
-    // Full file contents
-}
-```
+### 📁 文件管理
 
----
-```
-
-## 🛠️ Supported File Types
-
-The plugin recognizes these file extensions for syntax highlighting:
-
-| Extension | Language |
-|-----------|----------|
-| `.java` | Java |
-| `.kt`, `.kts` | Kotlin |
-| `.xml` | XML |
-| `.json` | JSON |
-| `.yml`, `.yaml` | YAML |
-| `.gradle` | Gradle |
-| `.js` | JavaScript |
-| `.ts` | TypeScript |
-| `.py` | Python |
-| `.go` | Go |
-| `.rs` | Rust |
-| `.c`, `.h` | C |
-| `.cpp`, `.hpp` | C++ |
-| `.cs` | C# |
-| `.rb` | Ruby |
-| `.swift` | Swift |
-| `.scala` | Scala |
-| And many more... |
-
-## 🏗️ Architecture
-
-```
-AICodeFileService         → JSON file read/write operations
-AddToAICodeAction         → Add file to context
-RemoveFromAICodeAction    → Remove file from context
-AICodeToolWindowFactory   → Creates the tool window
-AICodePanel               → Tool window UI
-AICodeFileListener        → File system event monitoring
-CopyMarkdownAction        → Export to Markdown
-MarkdownBuilder           → Markdown generation
-CodeLanguageResolver      → File extension → language mapping
-ClipboardService          → Clipboard operations
-```
-
-## 🔧 Building from Source
-
-### Prerequisites
-- JDK 17+
-- Gradle 8.0+
-
-### Build Steps
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/aicode-context-manager.git
-cd aicode-context-manager
-
-# First time setup - Generate Gradle Wrapper (if needed)
-# If you don't have gradle-wrapper.jar, run:
-gradle wrapper --gradle-version 8.5
-# Or just open the project in IntelliJ IDEA and it will auto-download
-
-# Build the plugin
-./gradlew buildPlugin
-
-# Run in IntelliJ sandbox for testing
-./gradlew runIde
-
-# The plugin ZIP will be in build/distributions/
-```
-
-**Note**: If `gradle-wrapper.jar` is missing, IntelliJ IDEA will automatically download it when you open the project, or you can generate it with `gradle wrapper`.
-
-## 🎨 Multi-Module Projects
-
-For projects with multiple modules, the tool window displays module names to avoid confusion:
-
-```
-[api-module] UserService.java
-[core-module] UserService.java
-[web-module] UserController.java
-```
-
-All paths in `.aicode.json` remain relative to the project root.
-
-## ⚠️ Error Handling
-
-| Situation | Behavior |
-|-----------|----------|
-| File doesn't exist | Shows "⚠️ Missing File" in Markdown |
-| JSON parse error | Notification with error message |
-| Empty file | Still exports (empty code block) |
-| Large file | No truncation (exports full content) |
-
-## 🤝 Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## 📝 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🐛 Issues & Support
-
-- Report bugs via GitHub Issues
-- For feature requests, use the discussion board
-- Check existing issues before creating new ones
-
-## 🎯 Use Cases
-
-- **AI Pair Programming**: Quickly share context with ChatGPT, Claude, or GitHub Copilot
-- **Code Reviews**: Export specific files for detailed review
-- **Documentation**: Generate code examples for documentation
-- **Knowledge Sharing**: Share code snippets with team members
-- **Training**: Create training materials with real code examples
-
-## 🔮 Roadmap
-
-- [ ] Support for custom Markdown templates
-- [ ] Export to different formats (HTML, PDF)
-- [ ] Context size calculator
-- [ ] Smart context suggestions based on file relationships
-- [ ] Integration with AI assistant APIs
-
-## 👏 Acknowledgments
-
-Built with ❤️ using IntelliJ Platform SDK
+* **添加到上下文**：在 Project 视图中右键任意文件 → AICode → Add to AICode
+* **从上下文移除**：右键已管理文件 → AICode → Remove from AICode
+* **智能菜单**：根据文件当前状态自动显示 Add 或 Remove
+* **支持撤销**：所有操作均支持 IntelliJ 的 Undo / Redo
 
 ---
 
-**Made for developers who love AI-assisted coding** 🚀
+### 🖼️ 可视化工具窗口
+
+* 提供 **AICode Context** 工具窗口，展示所有已管理文件
+* 多模块项目中显示模块名：`[module-name] FileName.java`
+* 点击即可打开文件
+* 右键可移除文件
+* 工具栏按钮可直接打开 `.aicode.json`
+* 文件变化时自动刷新
+
+---
+
+### 🔄 自动同步
+
+* **文件删除**：文件被删除时自动从上下文移除
+* **文件重命名**：路径自动更新
+* **文件移动**：移动目录后路径自动更新
+* 所有变更都会立即同步到 `.aicode.json`
+
+---
+
+### 📋 Markdown 导出
+
+* **一键导出**：右键 `.aicode.json` → AICode → Copy as Markdown
+* 自动生成包含所有文件内容的完整 Markdown 文档
+* 直接复制到系统剪贴板
+* 支持主流文件类型并带语法高亮
+* 导出完成后会提示包含的文件数量
+
+---
+
+## 🚀 使用方式
+
+### 🧠 在 IntelliJ IDEA 中安装插件仓库
+
+1. 打开 **IDEA**
+2. 进入 **Settings**（或 Preferences）
+3. 选择 **Plugins**
+4. 右上角点击 **⚙️（齿轮图标）**
+5. 选择 **Manage Plugin Repositories**
+6. 点击 **+**
+7. 填入地址：
+
+```
+https://hyxf.github.io/aicode-context-manager/updatePlugins.xml
+```
+
+8. 确认保存
+9. 搜索插件名称或在 **Updates** 中检查更新
+
+---
+
+**为热爱 AI 辅助编程的开发者打造** 🚀
