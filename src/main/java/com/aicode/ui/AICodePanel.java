@@ -45,8 +45,6 @@ public class AICodePanel extends JPanel implements Disposable {
 
     public AICodePanel(@NotNull Project project) {
         this.project = project;
-
-        // Init Tree
         this.rootNode = new DefaultMutableTreeNode(new AICodeNodeData("Project", null, true));
         this.treeModel = new DefaultTreeModel(rootNode);
         this.tree = new Tree(treeModel);
@@ -54,11 +52,8 @@ public class AICodePanel extends JPanel implements Disposable {
         setLayout(new BorderLayout());
         setupUI();
         setupListeners();
-
-        // Initial load
         refreshTree();
 
-        // Subscribe to changes
         project.getMessageBus().connect(this).subscribe(
                 AICodeFileService.AICODE_TOPIC,
                 new AICodeFileService.AICodeStateListener() {
@@ -169,26 +164,29 @@ public class AICodePanel extends JPanel implements Disposable {
 
             group.addSeparator();
 
-            // 2. New Group (No Icon)
-            group.add(new AnAction("New Group...", "Create a new empty context group", null) {
+            // 2. New Group (Icon in Menu: Yes; Icon in Dialog: No)
+            group.add(new AnAction("New Group...", "Create a new empty context group", AllIcons.General.Add) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
-                    String name = Messages.showInputDialog(project, "Enter name for new context group:", "New Group", Messages.getQuestionIcon());
+                    String name = Messages.showInputDialog(project,
+                        "Enter name for new context group:",
+                        "New Group",
+                        null); // Set Icon to null for Dialog
                     if (name != null && !name.trim().isEmpty()) {
                         service.addGroup(name.trim());
                     }
                 }
             });
 
-            // 3. Rename Group
-            group.add(new AnAction("Rename Current Group...", "Rename the currently active group", null) {
+            // 3. Rename Group (Icon in Menu: Yes; Icon in Dialog: No)
+            group.add(new AnAction("Rename Current Group...", "Rename the currently active group", AllIcons.Actions.Edit) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
                     String current = service.getActiveGroupName();
                     String newName = Messages.showInputDialog(project,
                         "Rename group '" + current + "' to:",
                         "Rename Group",
-                        Messages.getQuestionIcon(),
+                        null, // Set Icon to null for Dialog
                         current,
                         null);
 
@@ -223,10 +221,6 @@ public class AICodePanel extends JPanel implements Disposable {
             return group;
         }
     }
-
-    // ============================================================
-    // Other Panel Logic
-    // ============================================================
 
     private void copyMarkdownToClipboard() {
         AICodeFileService service = AICodeFileService.getInstance(project);
@@ -265,7 +259,6 @@ public class AICodePanel extends JPanel implements Disposable {
                 }
             }
         });
-
         tree.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -328,7 +321,6 @@ public class AICodePanel extends JPanel implements Disposable {
         SwingUtilities.invokeLater(() -> {
             rootNode.removeAllChildren();
             AICodeFileService service = AICodeFileService.getInstance(project);
-
             AICodeNodeData rootData = (AICodeNodeData) rootNode.getUserObject();
             String groupName = service.getActiveGroupName();
             rootData.displayName = "Group: " + groupName;

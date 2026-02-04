@@ -7,8 +7,7 @@ FILE_PATHS = {
     "panel": os.path.join("src", "main", "java", "com", "aicode", "ui", "AICodePanel.java")
 }
 
-# 1. 更新 AICodeConfig.java
-# 优化: 使用 LinkedHashMap 保持 JSON 键值顺序稳定
+# 1. AICodeConfig.java (保持不变: LinkedHashMap 优化)
 # ------------------------------------------------------------------
 config_model_content = """package com.aicode.model;
 
@@ -26,11 +25,9 @@ public class AICodeConfig {
     public static final String DEFAULT_GROUP = "Default";
 
     private String activeGroup = DEFAULT_GROUP;
-    // Use LinkedHashMap to keep JSON clean and ordered
     private Map<String, List<String>> groups = new LinkedHashMap<>();
 
     public AICodeConfig() {
-        // Ensure default group always exists
         groups.put(DEFAULT_GROUP, new ArrayList<>());
     }
 
@@ -56,24 +53,17 @@ public class AICodeConfig {
         this.groups = groups;
     }
 
-    /**
-     * Helper to get paths for current active group
-     */
     public List<String> getActivePaths() {
         return getGroups().computeIfAbsent(getActiveGroup(), k -> new ArrayList<>());
     }
 
-    /**
-     * Helper to set paths for current active group
-     */
     public void setActivePaths(List<String> paths) {
         getGroups().put(getActiveGroup(), paths != null ? paths : new ArrayList<>());
     }
 }
 """
 
-# 2. 更新 AICodeFileService.java
-# 新增: renameGroup 方法
+# 2. AICodeFileService.java (保持不变: 支持 rename)
 # ------------------------------------------------------------------
 service_content = """package com.aicode.service;
 
@@ -106,7 +96,6 @@ public class AICodeFileService {
     private final Project project;
     private final Gson gson;
 
-    // Topic for notifications
     public static final Topic<AICodeStateListener> AICODE_TOPIC =
             Topic.create("AICode Context Changed", AICodeStateListener.class);
 
@@ -127,14 +116,10 @@ public class AICodeFileService {
     @Nullable
     public VirtualFile getOrCreateAICodeFile() {
         VirtualFile baseDir = project.getBaseDir();
-        if (baseDir == null) {
-            return null;
-        }
+        if (baseDir == null) return null;
 
         VirtualFile aiCodeFile = baseDir.findChild(AICODE_FILE_NAME);
-        if (aiCodeFile != null) {
-            return aiCodeFile;
-        }
+        if (aiCodeFile != null) return aiCodeFile;
 
         try {
             return WriteCommandAction.writeCommandAction(project).compute(() -> {
@@ -156,17 +141,12 @@ public class AICodeFileService {
     @NotNull
     public AICodeConfig readConfig() {
         VirtualFile aiCodeFile = getOrCreateAICodeFile();
-        if (aiCodeFile == null) {
-            return new AICodeConfig();
-        }
+        if (aiCodeFile == null) return new AICodeConfig();
 
         try {
             String content = new String(aiCodeFile.contentsToByteArray(), StandardCharsets.UTF_8);
-            if (content.trim().isEmpty()) {
-                return new AICodeConfig();
-            }
+            if (content.trim().isEmpty()) return new AICodeConfig();
 
-            // 1. Try parse as new Config object
             try {
                 AICodeConfig config = gson.fromJson(content, AICodeConfig.class);
                 if (config != null && config.getGroups() != null && !config.getGroups().isEmpty()) {
@@ -174,11 +154,9 @@ public class AICodeFileService {
                 }
             } catch (JsonSyntaxException ignored) {}
 
-            // 2. Fallback: Try parse as List<String> (Old Format migration)
             try {
                 Type listType = new TypeToken<ArrayList<String>>() {}.getType();
                 List<String> oldPaths = gson.fromJson(content, listType);
-
                 if (oldPaths != null) {
                     AICodeConfig config = new AICodeConfig();
                     config.setActiveGroup(AICodeConfig.DEFAULT_GROUP);
@@ -188,7 +166,6 @@ public class AICodeFileService {
             } catch (JsonSyntaxException ignored) {}
 
             return new AICodeConfig();
-
         } catch (Exception e) {
             return new AICodeConfig();
         }
@@ -196,24 +173,16 @@ public class AICodeFileService {
 
     public void saveConfig(@NotNull AICodeConfig config) {
         VirtualFile aiCodeFile = getOrCreateAICodeFile();
-        if (aiCodeFile == null) {
-            return;
-        }
+        if (aiCodeFile == null) return;
 
         WriteCommandAction.runWriteCommandAction(project, () -> {
             try {
                 String json = gson.toJson(config);
                 aiCodeFile.setBinaryContent(json.getBytes(StandardCharsets.UTF_8));
                 notifyChange();
-            } catch (IOException e) {
-                // Handle error
-            }
+            } catch (IOException e) {}
         });
     }
-
-    // ============================================================
-    // Context Group Management
-    // ============================================================
 
     public String getActiveGroupName() {
         return readConfig().getActiveGroup();
@@ -242,15 +211,12 @@ public class AICodeFileService {
 
     public void renameGroup(String oldName, String newName) {
         if (oldName == null || newName == null || oldName.equals(newName)) return;
-
         AICodeConfig config = readConfig();
         Map<String, List<String>> groups = config.getGroups();
 
         if (groups.containsKey(oldName) && !groups.containsKey(newName)) {
-            // Preserve insertion order with LinkedHashMap if possible (handled in Config)
             List<String> paths = groups.remove(oldName);
             groups.put(newName, paths);
-
             if (oldName.equals(config.getActiveGroup())) {
                 config.setActiveGroup(newName);
             }
@@ -274,10 +240,6 @@ public class AICodeFileService {
         saveConfig(config);
     }
 
-    // ============================================================
-    // File Path Management (Operates on ACTIVE Group)
-    // ============================================================
-
     @NotNull
     public List<String> readFilePaths() {
         return readConfig().getActivePaths();
@@ -292,7 +254,6 @@ public class AICodeFileService {
     public void addFile(@NotNull VirtualFile file) {
         String relativePath = getRelativePath(file);
         if (relativePath == null) return;
-
         WriteCommandAction.runWriteCommandAction(project, "Add to AICode", null, () -> {
             AICodeConfig config = readConfig();
             List<String> paths = config.getActivePaths();
@@ -307,7 +268,6 @@ public class AICodeFileService {
     public void removeFile(@NotNull VirtualFile file) {
         String relativePath = getRelativePath(file);
         if (relativePath == null) return;
-
         WriteCommandAction.runWriteCommandAction(project, "Remove from AICode", null, () -> {
             AICodeConfig config = readConfig();
             List<String> paths = config.getActivePaths();
@@ -357,17 +317,11 @@ public class AICodeFileService {
     public String getRelativePath(@NotNull VirtualFile file) {
         VirtualFile baseDir = project.getBaseDir();
         if (baseDir == null) return null;
-
         String basePath = baseDir.getPath();
         String filePath = file.getPath();
-
         if (!filePath.startsWith(basePath)) return null;
-
         String relativePath = filePath.substring(basePath.length());
-        if (relativePath.startsWith("/")) {
-            relativePath = relativePath.substring(1);
-        }
-
+        if (relativePath.startsWith("/")) relativePath = relativePath.substring(1);
         return relativePath;
     }
 
@@ -380,9 +334,7 @@ public class AICodeFileService {
 }
 """
 
-# 3. 更新 AICodePanel.java
-# 修改: New Group 去掉 Icon
-# 新增: Rename Group
+# 3. AICodePanel.java (更新: 菜单带图标，Dialog无图标)
 # ------------------------------------------------------------------
 panel_content = """package com.aicode.ui;
 
@@ -431,8 +383,6 @@ public class AICodePanel extends JPanel implements Disposable {
 
     public AICodePanel(@NotNull Project project) {
         this.project = project;
-
-        // Init Tree
         this.rootNode = new DefaultMutableTreeNode(new AICodeNodeData("Project", null, true));
         this.treeModel = new DefaultTreeModel(rootNode);
         this.tree = new Tree(treeModel);
@@ -440,11 +390,8 @@ public class AICodePanel extends JPanel implements Disposable {
         setLayout(new BorderLayout());
         setupUI();
         setupListeners();
-
-        // Initial load
         refreshTree();
 
-        // Subscribe to changes
         project.getMessageBus().connect(this).subscribe(
                 AICodeFileService.AICODE_TOPIC,
                 new AICodeFileService.AICodeStateListener() {
@@ -555,26 +502,29 @@ public class AICodePanel extends JPanel implements Disposable {
 
             group.addSeparator();
 
-            // 2. New Group (No Icon)
-            group.add(new AnAction("New Group...", "Create a new empty context group", null) {
+            // 2. New Group (Icon in Menu: Yes; Icon in Dialog: No)
+            group.add(new AnAction("New Group...", "Create a new empty context group", AllIcons.General.Add) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
-                    String name = Messages.showInputDialog(project, "Enter name for new context group:", "New Group", Messages.getQuestionIcon());
+                    String name = Messages.showInputDialog(project,
+                        "Enter name for new context group:",
+                        "New Group",
+                        null); // Set Icon to null for Dialog
                     if (name != null && !name.trim().isEmpty()) {
                         service.addGroup(name.trim());
                     }
                 }
             });
 
-            // 3. Rename Group
-            group.add(new AnAction("Rename Current Group...", "Rename the currently active group", null) {
+            // 3. Rename Group (Icon in Menu: Yes; Icon in Dialog: No)
+            group.add(new AnAction("Rename Current Group...", "Rename the currently active group", AllIcons.Actions.Edit) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
                     String current = service.getActiveGroupName();
                     String newName = Messages.showInputDialog(project,
                         "Rename group '" + current + "' to:",
                         "Rename Group",
-                        Messages.getQuestionIcon(),
+                        null, // Set Icon to null for Dialog
                         current,
                         null);
 
@@ -609,10 +559,6 @@ public class AICodePanel extends JPanel implements Disposable {
             return group;
         }
     }
-
-    // ============================================================
-    // Other Panel Logic
-    // ============================================================
 
     private void copyMarkdownToClipboard() {
         AICodeFileService service = AICodeFileService.getInstance(project);
@@ -651,7 +597,6 @@ public class AICodePanel extends JPanel implements Disposable {
                 }
             }
         });
-
         tree.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -714,7 +659,6 @@ public class AICodePanel extends JPanel implements Disposable {
         SwingUtilities.invokeLater(() -> {
             rootNode.removeAllChildren();
             AICodeFileService service = AICodeFileService.getInstance(project);
-
             AICodeNodeData rootData = (AICodeNodeData) rootNode.getUserObject();
             String groupName = service.getActiveGroupName();
             rootData.displayName = "Group: " + groupName;
@@ -820,9 +764,8 @@ def write_file(path, content):
         f.write(content)
     print(f"Updated: {path}")
 
-# 执行文件写入
 write_file(FILE_PATHS["config_model"], config_model_content)
 write_file(FILE_PATHS["service"], service_content)
 write_file(FILE_PATHS["panel"], panel_content)
 
-print("AICode Context Groups implementation updated (No Icon, Rename, JSON Optimized).")
+print("AICode Context Groups UI updated (Dialog icons removed, Menu icons restored).")

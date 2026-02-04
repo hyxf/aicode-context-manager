@@ -14,11 +14,9 @@ public class AICodeConfig {
     public static final String DEFAULT_GROUP = "Default";
 
     private String activeGroup = DEFAULT_GROUP;
-    // Use LinkedHashMap to keep JSON clean and ordered
     private Map<String, List<String>> groups = new LinkedHashMap<>();
 
     public AICodeConfig() {
-        // Ensure default group always exists
         groups.put(DEFAULT_GROUP, new ArrayList<>());
     }
 
@@ -44,16 +42,10 @@ public class AICodeConfig {
         this.groups = groups;
     }
 
-    /**
-     * Helper to get paths for current active group
-     */
     public List<String> getActivePaths() {
         return getGroups().computeIfAbsent(getActiveGroup(), k -> new ArrayList<>());
     }
 
-    /**
-     * Helper to set paths for current active group
-     */
     public void setActivePaths(List<String> paths) {
         getGroups().put(getActiveGroup(), paths != null ? paths : new ArrayList<>());
     }

@@ -29,7 +29,6 @@ public class AICodeFileService {
     private final Project project;
     private final Gson gson;
 
-    // Topic for notifications
     public static final Topic<AICodeStateListener> AICODE_TOPIC =
             Topic.create("AICode Context Changed", AICodeStateListener.class);
 
@@ -50,14 +49,10 @@ public class AICodeFileService {
     @Nullable
     public VirtualFile getOrCreateAICodeFile() {
         VirtualFile baseDir = project.getBaseDir();
-        if (baseDir == null) {
-            return null;
-        }
+        if (baseDir == null) return null;
 
         VirtualFile aiCodeFile = baseDir.findChild(AICODE_FILE_NAME);
-        if (aiCodeFile != null) {
-            return aiCodeFile;
-        }
+        if (aiCodeFile != null) return aiCodeFile;
 
         try {
             return WriteCommandAction.writeCommandAction(project).compute(() -> {
@@ -79,17 +74,12 @@ public class AICodeFileService {
     @NotNull
     public AICodeConfig readConfig() {
         VirtualFile aiCodeFile = getOrCreateAICodeFile();
-        if (aiCodeFile == null) {
-            return new AICodeConfig();
-        }
+        if (aiCodeFile == null) return new AICodeConfig();
 
         try {
             String content = new String(aiCodeFile.contentsToByteArray(), StandardCharsets.UTF_8);
-            if (content.trim().isEmpty()) {
-                return new AICodeConfig();
-            }
+            if (content.trim().isEmpty()) return new AICodeConfig();
 
-            // 1. Try parse as new Config object
             try {
                 AICodeConfig config = gson.fromJson(content, AICodeConfig.class);
                 if (config != null && config.getGroups() != null && !config.getGroups().isEmpty()) {
@@ -97,11 +87,9 @@ public class AICodeFileService {
                 }
             } catch (JsonSyntaxException ignored) {}
 
-            // 2. Fallback: Try parse as List<String> (Old Format migration)
             try {
                 Type listType = new TypeToken<ArrayList<String>>() {}.getType();
                 List<String> oldPaths = gson.fromJson(content, listType);
-
                 if (oldPaths != null) {
                     AICodeConfig config = new AICodeConfig();
                     config.setActiveGroup(AICodeConfig.DEFAULT_GROUP);
@@ -111,7 +99,6 @@ public class AICodeFileService {
             } catch (JsonSyntaxException ignored) {}
 
             return new AICodeConfig();
-
         } catch (Exception e) {
             return new AICodeConfig();
         }
@@ -119,24 +106,16 @@ public class AICodeFileService {
 
     public void saveConfig(@NotNull AICodeConfig config) {
         VirtualFile aiCodeFile = getOrCreateAICodeFile();
-        if (aiCodeFile == null) {
-            return;
-        }
+        if (aiCodeFile == null) return;
 
         WriteCommandAction.runWriteCommandAction(project, () -> {
             try {
                 String json = gson.toJson(config);
                 aiCodeFile.setBinaryContent(json.getBytes(StandardCharsets.UTF_8));
                 notifyChange();
-            } catch (IOException e) {
-                // Handle error
-            }
+            } catch (IOException e) {}
         });
     }
-
-    // ============================================================
-    // Context Group Management
-    // ============================================================
 
     public String getActiveGroupName() {
         return readConfig().getActiveGroup();
@@ -165,15 +144,12 @@ public class AICodeFileService {
 
     public void renameGroup(String oldName, String newName) {
         if (oldName == null || newName == null || oldName.equals(newName)) return;
-
         AICodeConfig config = readConfig();
         Map<String, List<String>> groups = config.getGroups();
 
         if (groups.containsKey(oldName) && !groups.containsKey(newName)) {
-            // Preserve insertion order with LinkedHashMap if possible (handled in Config)
             List<String> paths = groups.remove(oldName);
             groups.put(newName, paths);
-
             if (oldName.equals(config.getActiveGroup())) {
                 config.setActiveGroup(newName);
             }
@@ -197,10 +173,6 @@ public class AICodeFileService {
         saveConfig(config);
     }
 
-    // ============================================================
-    // File Path Management (Operates on ACTIVE Group)
-    // ============================================================
-
     @NotNull
     public List<String> readFilePaths() {
         return readConfig().getActivePaths();
@@ -215,7 +187,6 @@ public class AICodeFileService {
     public void addFile(@NotNull VirtualFile file) {
         String relativePath = getRelativePath(file);
         if (relativePath == null) return;
-
         WriteCommandAction.runWriteCommandAction(project, "Add to AICode", null, () -> {
             AICodeConfig config = readConfig();
             List<String> paths = config.getActivePaths();
@@ -230,7 +201,6 @@ public class AICodeFileService {
     public void removeFile(@NotNull VirtualFile file) {
         String relativePath = getRelativePath(file);
         if (relativePath == null) return;
-
         WriteCommandAction.runWriteCommandAction(project, "Remove from AICode", null, () -> {
             AICodeConfig config = readConfig();
             List<String> paths = config.getActivePaths();
@@ -280,17 +250,11 @@ public class AICodeFileService {
     public String getRelativePath(@NotNull VirtualFile file) {
         VirtualFile baseDir = project.getBaseDir();
         if (baseDir == null) return null;
-
         String basePath = baseDir.getPath();
         String filePath = file.getPath();
-
         if (!filePath.startsWith(basePath)) return null;
-
         String relativePath = filePath.substring(basePath.length());
-        if (relativePath.startsWith("/")) {
-            relativePath = relativePath.substring(1);
-        }
-
+        if (relativePath.startsWith("/")) relativePath = relativePath.substring(1);
         return relativePath;
     }
 
