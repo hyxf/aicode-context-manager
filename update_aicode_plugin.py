@@ -1,9 +1,162 @@
 import os
 
-# 目标文件
+# 定义文件路径
+file_action = "src/main/java/com/aicode/action/AddToAICodeAction.java"
 file_panel = "src/main/java/com/aicode/ui/AICodePanel.java"
 
-# 新的文件内容
+# 1. 更新 AddToAICodeAction.java
+# 增加 isBinary() 判断
+content_action = """package com.aicode.action;
+
+import com.aicode.service.AICodeFileService;
+import com.aicode.settings.AICodeIgnoreSettings;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.project.DumbAware;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VfsUtilCore;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileVisitor;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Action to add file or directory (recursively) to AICode context
+ * Supports multiple file selection.
+ * Ignores binary files.
+ */
+public class AddToAICodeAction extends AnAction implements DumbAware {
+
+    @Override
+    public void actionPerformed(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        // Support multi-selection
+        VirtualFile[] files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
+
+        if (project == null || files == null || files.length == 0) {
+            return;
+        }
+
+        AICodeFileService service = AICodeFileService.getInstance(project);
+        VirtualFile baseDir = project.getBaseDir();
+
+        // Batch operation to avoid multiple refreshes
+        List<String> currentPaths = new ArrayList<>(service.readFilePaths());
+        Set<String> existingSet = new HashSet<>(currentPaths);
+        List<String> newPathsToAdd = new ArrayList<>();
+
+        for (VirtualFile file : files) {
+            // Prevent adding project root
+            if (file.equals(baseDir)) {
+                continue;
+            }
+
+            if (file.isDirectory()) {
+                // Recursively visit directory
+                VfsUtilCore.visitChildrenRecursively(file, new VirtualFileVisitor<Void>() {
+                    @Override
+                    public boolean visitFile(@NotNull VirtualFile child) {
+                        // Check Ignore List
+                        if (AICodeIgnoreSettings.isIgnored(child.getName())) {
+                            return false; // Skip directory contents
+                        }
+
+                        if (!child.isDirectory()) {
+                            // SKIP BINARY FILES
+                            if (child.getFileType().isBinary()) {
+                                return true;
+                            }
+
+                            if (!".aicode.json".equals(child.getName())) {
+                                String relativePath = service.getRelativePath(child);
+                                if (relativePath != null && !existingSet.contains(relativePath)) {
+                                    newPathsToAdd.add(relativePath);
+                                }
+                            }
+                        }
+                        return true;
+                    }
+                });
+            } else {
+                // Single file
+                if (AICodeIgnoreSettings.isIgnored(file.getName())) {
+                    continue;
+                }
+                // SKIP BINARY FILES
+                if (file.getFileType().isBinary()) {
+                    continue;
+                }
+
+                if (!".aicode.json".equals(file.getName())) {
+                    String relativePath = service.getRelativePath(file);
+                    if (relativePath != null && !existingSet.contains(relativePath)) {
+                        newPathsToAdd.add(relativePath);
+                    }
+                }
+            }
+        }
+
+        if (!newPathsToAdd.isEmpty()) {
+            currentPaths.addAll(newPathsToAdd);
+            service.writeFilePaths(currentPaths);
+        }
+    }
+
+    @Override
+    public void update(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        VirtualFile[] files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
+
+        boolean visible = false;
+        if (project != null && files != null && files.length > 0) {
+            AICodeFileService service = AICodeFileService.getInstance(project);
+
+            // Check if ANY of the selected files can be added
+            for (VirtualFile file : files) {
+                // 1. Exclude Project Root
+                boolean isRoot = file.equals(project.getBaseDir());
+                // 2. Exclude config file
+                boolean isConfigFile = ".aicode.json".equals(file.getName());
+                // 3. Exclude Ignored Files
+                boolean isIgnored = AICodeIgnoreSettings.isIgnored(file.getName());
+                // 4. Exclude Binary Files (unless directory)
+                boolean isBinary = !file.isDirectory() && file.getFileType().isBinary();
+
+                if (!isRoot && !isConfigFile && !isIgnored && !isBinary) {
+                    if (file.isDirectory()) {
+                        // Directory is always addable (simplified)
+                        visible = true;
+                    } else {
+                        // File is visible if NOT in list
+                        if (!service.containsFile(file)) {
+                            visible = true;
+                        }
+                    }
+                }
+
+                // If we found at least one valid candidate, enable the action
+                if (visible) break;
+            }
+        }
+
+        e.getPresentation().setEnabledAndVisible(visible);
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
+    }
+}
+"""
+
+# 2. 更新 AICodePanel.java
+# 在 checkHasMissingFiles 和 addMissingFiles 中加入 isBinary() 判断
 content_panel = """package com.aicode.ui;
 
 import com.aicode.service.AICodeFileService;
@@ -350,7 +503,12 @@ public class AICodePanel extends JPanel implements Disposable {
                     return false; // Skip directory contents
                 }
 
-                // 2. Add file if not already tracked
+                // 2. Binary Check (SKIP BINARY)
+                if (file.getFileType().isBinary()) {
+                    return true;
+                }
+
+                // 3. Add file if not already tracked
                 if (!file.isDirectory() && !".aicode.json".equals(file.getName())) {
                     String relativePath = service.getRelativePath(file);
                     if (relativePath != null && !currentPaths.contains(relativePath)) {
@@ -468,7 +626,7 @@ public class AICodePanel extends JPanel implements Disposable {
 
     /**
      * Checks if a directory contains any file that is NOT in the tracked paths set.
-     * Uses recursion but respects Ignore Settings to be efficient.
+     * Uses recursion but respects Ignore Settings AND Binary Check to be efficient.
      */
     private boolean checkHasMissingFiles(VirtualFile dir, Set<String> trackedPaths, AICodeFileService service) {
         if (dir == null || !dir.isValid()) return false;
@@ -486,8 +644,13 @@ public class AICodePanel extends JPanel implements Disposable {
                     return false;
                 }
 
+                // 2. Binary Check (Ignore binary files for "missing" status)
+                if (file.getFileType().isBinary()) {
+                    return true; // Skip checking this file, but continue
+                }
+
                 if (!file.isDirectory()) {
-                    // 2. File Check
+                    // 3. File Check
                     if (!".aicode.json".equals(file.getName())) {
                          String relativePath = service.getRelativePath(file);
                          if (relativePath != null && !trackedPaths.contains(relativePath)) {
@@ -573,5 +736,6 @@ def write_file(path, content):
     print(f"Updated: {path}")
 
 if __name__ == "__main__":
+    write_file(file_action, content_action)
     write_file(file_panel, content_panel)
-    print("AICodePanel updated with 'Add Missing Files' feature.")
+    print("Code updated to ignore binary files.")

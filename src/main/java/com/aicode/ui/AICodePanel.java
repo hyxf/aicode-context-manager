@@ -344,7 +344,12 @@ public class AICodePanel extends JPanel implements Disposable {
                     return false; // Skip directory contents
                 }
 
-                // 2. Add file if not already tracked
+                // 2. Binary Check (SKIP BINARY)
+                if (file.getFileType().isBinary()) {
+                    return true;
+                }
+
+                // 3. Add file if not already tracked
                 if (!file.isDirectory() && !".aicode.json".equals(file.getName())) {
                     String relativePath = service.getRelativePath(file);
                     if (relativePath != null && !currentPaths.contains(relativePath)) {
@@ -462,7 +467,7 @@ public class AICodePanel extends JPanel implements Disposable {
 
     /**
      * Checks if a directory contains any file that is NOT in the tracked paths set.
-     * Uses recursion but respects Ignore Settings to be efficient.
+     * Uses recursion but respects Ignore Settings AND Binary Check to be efficient.
      */
     private boolean checkHasMissingFiles(VirtualFile dir, Set<String> trackedPaths, AICodeFileService service) {
         if (dir == null || !dir.isValid()) return false;
@@ -480,8 +485,13 @@ public class AICodePanel extends JPanel implements Disposable {
                     return false;
                 }
 
+                // 2. Binary Check (Ignore binary files for "missing" status)
+                if (file.getFileType().isBinary()) {
+                    return true; // Skip checking this file, but continue
+                }
+
                 if (!file.isDirectory()) {
-                    // 2. File Check
+                    // 3. File Check
                     if (!".aicode.json".equals(file.getName())) {
                          String relativePath = service.getRelativePath(file);
                          if (relativePath != null && !trackedPaths.contains(relativePath)) {

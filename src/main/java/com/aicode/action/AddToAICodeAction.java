@@ -21,6 +21,7 @@ import java.util.Set;
 /**
  * Action to add file or directory (recursively) to AICode context
  * Supports multiple file selection.
+ * Ignores binary files.
  */
 public class AddToAICodeAction extends AnAction implements DumbAware {
 
@@ -53,16 +54,22 @@ public class AddToAICodeAction extends AnAction implements DumbAware {
                 VfsUtilCore.visitChildrenRecursively(file, new VirtualFileVisitor<Void>() {
                     @Override
                     public boolean visitFile(@NotNull VirtualFile child) {
-                        // Check Ignore List (Directory or File name)
+                        // Check Ignore List
                         if (AICodeIgnoreSettings.isIgnored(child.getName())) {
-                            // Return false to skip processing this directory's children
-                            return false;
+                            return false; // Skip directory contents
                         }
 
-                        if (!child.isDirectory() && !".aicode.json".equals(child.getName())) {
-                            String relativePath = service.getRelativePath(child);
-                            if (relativePath != null && !existingSet.contains(relativePath)) {
-                                newPathsToAdd.add(relativePath);
+                        if (!child.isDirectory()) {
+                            // SKIP BINARY FILES
+                            if (child.getFileType().isBinary()) {
+                                return true;
+                            }
+
+                            if (!".aicode.json".equals(child.getName())) {
+                                String relativePath = service.getRelativePath(child);
+                                if (relativePath != null && !existingSet.contains(relativePath)) {
+                                    newPathsToAdd.add(relativePath);
+                                }
                             }
                         }
                         return true;
@@ -70,8 +77,11 @@ public class AddToAICodeAction extends AnAction implements DumbAware {
                 });
             } else {
                 // Single file
-                // Check if the single file selected is in the ignore list
                 if (AICodeIgnoreSettings.isIgnored(file.getName())) {
+                    continue;
+                }
+                // SKIP BINARY FILES
+                if (file.getFileType().isBinary()) {
                     continue;
                 }
 
@@ -107,8 +117,10 @@ public class AddToAICodeAction extends AnAction implements DumbAware {
                 boolean isConfigFile = ".aicode.json".equals(file.getName());
                 // 3. Exclude Ignored Files
                 boolean isIgnored = AICodeIgnoreSettings.isIgnored(file.getName());
+                // 4. Exclude Binary Files (unless directory)
+                boolean isBinary = !file.isDirectory() && file.getFileType().isBinary();
 
-                if (!isRoot && !isConfigFile && !isIgnored) {
+                if (!isRoot && !isConfigFile && !isIgnored && !isBinary) {
                     if (file.isDirectory()) {
                         // Directory is always addable (simplified)
                         visible = true;
