@@ -1,7 +1,7 @@
 <idea-plugin>
-    <id>com.aicode.context-manager</id>
+    <id>com.github.hyxf.aicode-context-manager</id>
     <name>AICode Context Manager</name>
-    <vendor email="support@aicode.com" url="https://aicode.com">AICode</vendor>
+    <vendor email="xchao887@gmail.com" url="https://github.com/hyxf/aicode-context-manager">AICode</vendor>
 
     <description><![CDATA[
     <h2>AICode Context Manager</h2>
@@ -14,7 +14,6 @@
       <li>Support multi-module projects</li>
       <li>Auto-sync file changes (rename, move, delete)</li>
       <li>Export all context files as Markdown code package</li>
-      <li>Undo support for all operations</li>
     </ul>
     ]]></description>
 

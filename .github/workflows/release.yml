@@ -60,12 +60,12 @@ jobs:
 
           printf '%s\n' \
           '<plugins>' \
-          '  <plugin id="com.yourcompany.plugin"' \
+          '  <plugin id="com.github.hyxf.aicode-context-manager"' \
           "          url=\"$URL\"" \
           "          version=\"${{ env.VERSION }}\">" \
-          '    <name>Your Plugin</name>' \
-          '    <vendor>Your Company</vendor>' \
-          '    <description>Internal IDEA Plugin</description>' \
+          '    <name>AICode Context Manager</name>' \
+          '    <vendor>AICode</vendor>' \
+          '    <description>AICode Context Manager</description>' \
           '  </plugin>' \
           '</plugins>' > site/updatePlugins.xml
 
