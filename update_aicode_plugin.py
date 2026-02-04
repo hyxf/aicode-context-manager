@@ -317,12 +317,56 @@ public class AICodePanel extends JPanel implements Disposable {
         if (node == null || node.getUserObject() == null) return;
         AICodeNodeData data = (AICodeNodeData) node.getUserObject();
         JPopupMenu menu = new JPopupMenu();
+
+        // [Feature: Add Missing Files]
+        // Only show if directory AND has missing files
+        if (data.isDirectory && data.hasMissingFiles && data.virtualFile != null) {
+            JMenuItem addMissingItem = new JMenuItem("Add Missing Files");
+            addMissingItem.setIcon(AllIcons.General.Add);
+            addMissingItem.addActionListener(actionEvent -> addMissingFiles(data.virtualFile));
+            menu.add(addMissingItem);
+            menu.addSeparator();
+        }
+
         String removeText = data.isDirectory ? "Remove Directory from Context" : "Remove File from Context";
         JMenuItem removeItem = new JMenuItem(removeText);
         removeItem.setIcon(AllIcons.Actions.Cancel);
         removeItem.addActionListener(actionEvent -> removeNodeContext(node));
         menu.add(removeItem);
+
         menu.show(tree, e.getX(), e.getY());
+    }
+
+    private void addMissingFiles(@NotNull VirtualFile dir) {
+        AICodeFileService service = AICodeFileService.getInstance(project);
+        Set<String> currentPaths = new HashSet<>(service.readFilePaths());
+        List<String> newPathsToAdd = new ArrayList<>();
+
+        VfsUtilCore.visitChildrenRecursively(dir, new VirtualFileVisitor<Void>() {
+            @Override
+            public boolean visitFile(@NotNull VirtualFile file) {
+                // 1. Ignore Check
+                if (AICodeIgnoreSettings.isIgnored(file.getName())) {
+                    return false; // Skip directory contents
+                }
+
+                // 2. Add file if not already tracked
+                if (!file.isDirectory() && !".aicode.json".equals(file.getName())) {
+                    String relativePath = service.getRelativePath(file);
+                    if (relativePath != null && !currentPaths.contains(relativePath)) {
+                        newPathsToAdd.add(relativePath);
+                    }
+                }
+                return true;
+            }
+        });
+
+        if (!newPathsToAdd.isEmpty()) {
+            List<String> allPaths = new ArrayList<>(currentPaths);
+            allPaths.addAll(newPathsToAdd);
+            service.writeFilePaths(allPaths);
+            showNotification("Added " + newPathsToAdd.size() + " missing files.", NotificationType.INFORMATION);
+        }
     }
 
     private void removeNodeContext(DefaultMutableTreeNode node) {
@@ -530,4 +574,4 @@ def write_file(path, content):
 
 if __name__ == "__main__":
     write_file(file_panel, content_panel)
-    print("AICodePanel updated with missing files indicator (*).")
+    print("AICodePanel updated with 'Add Missing Files' feature.")
