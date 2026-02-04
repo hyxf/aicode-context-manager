@@ -20,6 +20,10 @@
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
+        <notificationGroup
+                id="AICode"
+                displayType="BALLOON"
+                isLogByDefault="true"/>
         <!-- Tool Window -->
         <toolWindow
                 id="AICode Context"

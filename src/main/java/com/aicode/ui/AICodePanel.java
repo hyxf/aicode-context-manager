@@ -20,7 +20,6 @@ import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.treeStructure.Tree;
 import com.intellij.util.ui.tree.TreeUtil;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.tree.DefaultMutableTreeNode;
@@ -59,8 +58,13 @@ public class AICodePanel extends JPanel implements Disposable {
 
         // Subscribe to changes
         project.getMessageBus().connect(this).subscribe(
-            AICodeFileService.AICODE_TOPIC,
-            this::refreshTree
+                AICodeFileService.AICODE_TOPIC,
+                new AICodeFileService.AICodeStateListener() {
+                    @Override
+                    public void onContextChanged() {
+                        refreshTree();
+                    }
+                }
         );
     }
 
