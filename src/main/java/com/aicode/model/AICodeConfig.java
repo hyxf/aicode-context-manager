@@ -1,19 +1,21 @@
 package com.aicode.model;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Data model for .aicode.json
  * Supports multiple context groups.
+ * Optimized with LinkedHashMap to preserve order in JSON.
  */
 public class AICodeConfig {
     public static final String DEFAULT_GROUP = "Default";
 
     private String activeGroup = DEFAULT_GROUP;
-    private Map<String, List<String>> groups = new HashMap<>();
+    // Use LinkedHashMap to keep JSON clean and ordered
+    private Map<String, List<String>> groups = new LinkedHashMap<>();
 
     public AICodeConfig() {
         // Ensure default group always exists
@@ -33,7 +35,7 @@ public class AICodeConfig {
 
     public Map<String, List<String>> getGroups() {
         if (groups == null) {
-            groups = new HashMap<>();
+            groups = new LinkedHashMap<>();
         }
         return groups;
     }

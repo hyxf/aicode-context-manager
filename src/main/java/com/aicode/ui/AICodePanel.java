@@ -71,30 +71,25 @@ public class AICodePanel extends JPanel implements Disposable {
     }
 
     private void setupUI() {
-        // 1. Configure Tree Appearance
         tree.setRootVisible(true);
         tree.setShowsRootHandles(true);
         tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
         tree.setCellRenderer(new AICodeTreeCellRenderer());
         tree.getEmptyText().setText("No files in this context group.");
 
-        // 2. Scroll Pane
         JBScrollPane scrollPane = new JBScrollPane(tree);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         add(scrollPane, BorderLayout.CENTER);
 
-        // 3. Toolbar
         add(createToolbar(), BorderLayout.NORTH);
     }
 
     private JComponent createToolbar() {
         DefaultActionGroup actionGroup = new DefaultActionGroup();
 
-        // Group Selector
         actionGroup.add(new GroupSelectorAction());
         actionGroup.addSeparator();
 
-        // Open Config
         actionGroup.add(new AnAction("Open Configuration", "Open .aicode.json configuration file", AllIcons.General.Settings) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e) {
@@ -102,7 +97,6 @@ public class AICodePanel extends JPanel implements Disposable {
             }
         });
 
-        // Copy as Markdown
         actionGroup.add(new AnAction("Copy as Markdown", "Export current context group as Markdown", AllIcons.Actions.Copy) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e) {
@@ -112,20 +106,11 @@ public class AICodePanel extends JPanel implements Disposable {
 
         actionGroup.addSeparator();
 
-        // Expand/Collapse
         TreeExpander treeExpander = new TreeExpander() {
-            @Override
-            public void expandAll() {
-                TreeUtil.expandAll(tree);
-            }
-            @Override
-            public boolean canExpand() { return true; }
-            @Override
-            public void collapseAll() {
-                TreeUtil.collapseAll(tree, 1);
-            }
-            @Override
-            public boolean canCollapse() { return true; }
+            @Override public void expandAll() { TreeUtil.expandAll(tree); }
+            @Override public boolean canExpand() { return true; }
+            @Override public void collapseAll() { TreeUtil.collapseAll(tree, 1); }
+            @Override public boolean canCollapse() { return true; }
         };
         CommonActionsManager actionsManager = CommonActionsManager.getInstance();
         actionGroup.add(actionsManager.createExpandAllAction(treeExpander, tree));
@@ -149,14 +134,6 @@ public class AICodePanel extends JPanel implements Disposable {
     // ============================================================
 
     private class GroupSelectorAction extends ComboBoxAction {
-        @NotNull
-        @Override
-        public JComponent createCustomComponent(@NotNull Presentation presentation, @NotNull String place) {
-            JComponent component = super.createCustomComponent(presentation, place);
-            // Optionally constrain width
-            return component;
-        }
-
         @Override
         public void update(@NotNull AnActionEvent e) {
             Project p = e.getProject();
@@ -176,10 +153,10 @@ public class AICodePanel extends JPanel implements Disposable {
             String activeGroup = service.getActiveGroupName();
             Set<String> allGroups = service.getGroupNames();
 
-            // 1. List existing groups
             List<String> sortedGroups = new ArrayList<>(allGroups);
             Collections.sort(sortedGroups);
 
+            // 1. Switch Group
             for (String groupName : sortedGroups) {
                 boolean isSelected = groupName.equals(activeGroup);
                 group.add(new AnAction(groupName, "Switch to " + groupName, isSelected ? AllIcons.Actions.Checked : null) {
@@ -192,8 +169,8 @@ public class AICodePanel extends JPanel implements Disposable {
 
             group.addSeparator();
 
-            // 2. Add New Group
-            group.add(new AnAction("New Group...", "Create a new empty context group", AllIcons.General.Add) {
+            // 2. New Group (No Icon)
+            group.add(new AnAction("New Group...", "Create a new empty context group", null) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
                     String name = Messages.showInputDialog(project, "Enter name for new context group:", "New Group", Messages.getQuestionIcon());
@@ -203,7 +180,29 @@ public class AICodePanel extends JPanel implements Disposable {
                 }
             });
 
-            // 3. Remove Current Group
+            // 3. Rename Group
+            group.add(new AnAction("Rename Current Group...", "Rename the currently active group", null) {
+                @Override
+                public void actionPerformed(@NotNull AnActionEvent e) {
+                    String current = service.getActiveGroupName();
+                    String newName = Messages.showInputDialog(project,
+                        "Rename group '" + current + "' to:",
+                        "Rename Group",
+                        Messages.getQuestionIcon(),
+                        current,
+                        null);
+
+                    if (newName != null && !newName.trim().isEmpty() && !newName.equals(current)) {
+                        if (service.getGroupNames().contains(newName)) {
+                            Messages.showErrorDialog(project, "Group '" + newName + "' already exists.", "Rename Error");
+                        } else {
+                            service.renameGroup(current, newName.trim());
+                        }
+                    }
+                }
+            });
+
+            // 4. Delete Group
             group.add(new AnAction("Delete Current Group", "Delete the currently active group", AllIcons.General.Remove) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
@@ -217,7 +216,6 @@ public class AICodePanel extends JPanel implements Disposable {
                 }
                 @Override
                 public void update(@NotNull AnActionEvent e) {
-                    // Prevent deleting if it's the only one left
                     e.getPresentation().setEnabled(service.getGroupNames().size() > 1);
                 }
             });
@@ -241,11 +239,7 @@ public class AICodePanel extends JPanel implements Disposable {
         }
 
         try {
-            String markdown = MarkdownBuilder.buildMarkdown(
-                    project,
-                    filePaths,
-                    service::getFileFromPath
-            );
+            String markdown = MarkdownBuilder.buildMarkdown(project, filePaths, service::getFileFromPath);
             ClipboardService.copyToClipboard(markdown);
             showNotification("Copied group '" + group + "' (" + filePaths.size() + " files) to clipboard.", NotificationType.INFORMATION);
         } catch (Exception ex) {
@@ -335,7 +329,6 @@ public class AICodePanel extends JPanel implements Disposable {
             rootNode.removeAllChildren();
             AICodeFileService service = AICodeFileService.getInstance(project);
 
-            // Update Root Display with Group Name
             AICodeNodeData rootData = (AICodeNodeData) rootNode.getUserObject();
             String groupName = service.getActiveGroupName();
             rootData.displayName = "Group: " + groupName;

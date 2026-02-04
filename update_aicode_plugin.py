@@ -7,24 +7,27 @@ FILE_PATHS = {
     "panel": os.path.join("src", "main", "java", "com", "aicode", "ui", "AICodePanel.java")
 }
 
-# 1. 新增 AICodeConfig.java
+# 1. 更新 AICodeConfig.java
+# 优化: 使用 LinkedHashMap 保持 JSON 键值顺序稳定
 # ------------------------------------------------------------------
 config_model_content = """package com.aicode.model;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Data model for .aicode.json
  * Supports multiple context groups.
+ * Optimized with LinkedHashMap to preserve order in JSON.
  */
 public class AICodeConfig {
     public static final String DEFAULT_GROUP = "Default";
 
     private String activeGroup = DEFAULT_GROUP;
-    private Map<String, List<String>> groups = new HashMap<>();
+    // Use LinkedHashMap to keep JSON clean and ordered
+    private Map<String, List<String>> groups = new LinkedHashMap<>();
 
     public AICodeConfig() {
         // Ensure default group always exists
@@ -44,7 +47,7 @@ public class AICodeConfig {
 
     public Map<String, List<String>> getGroups() {
         if (groups == null) {
-            groups = new HashMap<>();
+            groups = new LinkedHashMap<>();
         }
         return groups;
     }
@@ -69,7 +72,8 @@ public class AICodeConfig {
 }
 """
 
-# 2. 重写 AICodeFileService.java
+# 2. 更新 AICodeFileService.java
+# 新增: renameGroup 方法
 # ------------------------------------------------------------------
 service_content = """package com.aicode.service;
 
@@ -89,8 +93,9 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -119,9 +124,6 @@ public class AICodeFileService {
         return project.getService(AICodeFileService.class);
     }
 
-    /**
-     * Get or create .aicode.json file in project root
-     */
     @Nullable
     public VirtualFile getOrCreateAICodeFile() {
         VirtualFile baseDir = project.getBaseDir();
@@ -134,7 +136,6 @@ public class AICodeFileService {
             return aiCodeFile;
         }
 
-        // Create new file with empty config
         try {
             return WriteCommandAction.writeCommandAction(project).compute(() -> {
                 try {
@@ -152,10 +153,6 @@ public class AICodeFileService {
         }
     }
 
-    /**
-     * Read the full configuration.
-     * Handles migration from old List format to new Object format.
-     */
     @NotNull
     public AICodeConfig readConfig() {
         VirtualFile aiCodeFile = getOrCreateAICodeFile();
@@ -172,29 +169,23 @@ public class AICodeFileService {
             // 1. Try parse as new Config object
             try {
                 AICodeConfig config = gson.fromJson(content, AICodeConfig.class);
-                // Basic validation to ensure it wasn't parsed as an empty object from a list
                 if (config != null && config.getGroups() != null && !config.getGroups().isEmpty()) {
                     return config;
                 }
-            } catch (JsonSyntaxException ignored) {
-                // Not a valid object, might be a list (old format)
-            }
+            } catch (JsonSyntaxException ignored) {}
 
-            // 2. Fallback: Try parse as List<String> (Old Format)
+            // 2. Fallback: Try parse as List<String> (Old Format migration)
             try {
                 Type listType = new TypeToken<ArrayList<String>>() {}.getType();
                 List<String> oldPaths = gson.fromJson(content, listType);
 
                 if (oldPaths != null) {
-                    // Migrate to new format
                     AICodeConfig config = new AICodeConfig();
                     config.setActiveGroup(AICodeConfig.DEFAULT_GROUP);
                     config.getGroups().put(AICodeConfig.DEFAULT_GROUP, oldPaths);
                     return config;
                 }
-            } catch (JsonSyntaxException ignored) {
-                // Completely invalid
-            }
+            } catch (JsonSyntaxException ignored) {}
 
             return new AICodeConfig();
 
@@ -203,9 +194,6 @@ public class AICodeFileService {
         }
     }
 
-    /**
-     * Save configuration to file
-     */
     public void saveConfig(@NotNull AICodeConfig config) {
         VirtualFile aiCodeFile = getOrCreateAICodeFile();
         if (aiCodeFile == null) {
@@ -247,22 +235,37 @@ public class AICodeFileService {
         AICodeConfig config = readConfig();
         if (!config.getGroups().containsKey(groupName)) {
             config.getGroups().put(groupName, new ArrayList<>());
-            config.setActiveGroup(groupName); // Auto switch to new group
+            config.setActiveGroup(groupName);
+            saveConfig(config);
+        }
+    }
+
+    public void renameGroup(String oldName, String newName) {
+        if (oldName == null || newName == null || oldName.equals(newName)) return;
+
+        AICodeConfig config = readConfig();
+        Map<String, List<String>> groups = config.getGroups();
+
+        if (groups.containsKey(oldName) && !groups.containsKey(newName)) {
+            // Preserve insertion order with LinkedHashMap if possible (handled in Config)
+            List<String> paths = groups.remove(oldName);
+            groups.put(newName, paths);
+
+            if (oldName.equals(config.getActiveGroup())) {
+                config.setActiveGroup(newName);
+            }
             saveConfig(config);
         }
     }
 
     public void removeGroup(String groupName) {
         AICodeConfig config = readConfig();
-        // Don't allow removing the last group, or ensure at least one exists
         if (config.getGroups().size() <= 1 && config.getGroups().containsKey(groupName)) {
-            // If deleting the only group, just clear it or rename to Default
             config.getGroups().remove(groupName);
             config.getGroups().put(AICodeConfig.DEFAULT_GROUP, new ArrayList<>());
             config.setActiveGroup(AICodeConfig.DEFAULT_GROUP);
         } else {
             config.getGroups().remove(groupName);
-            // If we removed the active group, switch to default or any other
             if (groupName.equals(config.getActiveGroup())) {
                 String nextGroup = config.getGroups().keySet().iterator().next();
                 config.setActiveGroup(nextGroup);
@@ -275,26 +278,17 @@ public class AICodeFileService {
     // File Path Management (Operates on ACTIVE Group)
     // ============================================================
 
-    /**
-     * Read file paths from CURRENT ACTIVE group
-     */
     @NotNull
     public List<String> readFilePaths() {
         return readConfig().getActivePaths();
     }
 
-    /**
-     * Write file paths to CURRENT ACTIVE group
-     */
     public void writeFilePaths(@NotNull List<String> paths) {
         AICodeConfig config = readConfig();
         config.setActivePaths(paths);
         saveConfig(config);
     }
 
-    /**
-     * Add file to .aicode.json (Active Group)
-     */
     public void addFile(@NotNull VirtualFile file) {
         String relativePath = getRelativePath(file);
         if (relativePath == null) return;
@@ -310,9 +304,6 @@ public class AICodeFileService {
         });
     }
 
-    /**
-     * Remove file from .aicode.json (Active Group)
-     */
     public void removeFile(@NotNull VirtualFile file) {
         String relativePath = getRelativePath(file);
         if (relativePath == null) return;
@@ -327,9 +318,6 @@ public class AICodeFileService {
         });
     }
 
-    /**
-     * Remove file path from .aicode.json (Active Group)
-     */
     public void removeFilePath(@NotNull String path) {
         WriteCommandAction.runWriteCommandAction(project, () -> {
             AICodeConfig config = readConfig();
@@ -341,9 +329,6 @@ public class AICodeFileService {
         });
     }
 
-    /**
-     * Update file path in .aicode.json (Active Group)
-     */
     public void updateFilePath(@NotNull String oldPath, @NotNull String newPath) {
         WriteCommandAction.runWriteCommandAction(project, () -> {
             AICodeConfig config = readConfig();
@@ -395,7 +380,9 @@ public class AICodeFileService {
 }
 """
 
-# 3. 重写 AICodePanel.java
+# 3. 更新 AICodePanel.java
+# 修改: New Group 去掉 Icon
+# 新增: Rename Group
 # ------------------------------------------------------------------
 panel_content = """package com.aicode.ui;
 
@@ -470,30 +457,25 @@ public class AICodePanel extends JPanel implements Disposable {
     }
 
     private void setupUI() {
-        // 1. Configure Tree Appearance
         tree.setRootVisible(true);
         tree.setShowsRootHandles(true);
         tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
         tree.setCellRenderer(new AICodeTreeCellRenderer());
         tree.getEmptyText().setText("No files in this context group.");
 
-        // 2. Scroll Pane
         JBScrollPane scrollPane = new JBScrollPane(tree);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         add(scrollPane, BorderLayout.CENTER);
 
-        // 3. Toolbar
         add(createToolbar(), BorderLayout.NORTH);
     }
 
     private JComponent createToolbar() {
         DefaultActionGroup actionGroup = new DefaultActionGroup();
 
-        // Group Selector
         actionGroup.add(new GroupSelectorAction());
         actionGroup.addSeparator();
 
-        // Open Config
         actionGroup.add(new AnAction("Open Configuration", "Open .aicode.json configuration file", AllIcons.General.Settings) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e) {
@@ -501,7 +483,6 @@ public class AICodePanel extends JPanel implements Disposable {
             }
         });
 
-        // Copy as Markdown
         actionGroup.add(new AnAction("Copy as Markdown", "Export current context group as Markdown", AllIcons.Actions.Copy) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e) {
@@ -511,20 +492,11 @@ public class AICodePanel extends JPanel implements Disposable {
 
         actionGroup.addSeparator();
 
-        // Expand/Collapse
         TreeExpander treeExpander = new TreeExpander() {
-            @Override
-            public void expandAll() {
-                TreeUtil.expandAll(tree);
-            }
-            @Override
-            public boolean canExpand() { return true; }
-            @Override
-            public void collapseAll() {
-                TreeUtil.collapseAll(tree, 1);
-            }
-            @Override
-            public boolean canCollapse() { return true; }
+            @Override public void expandAll() { TreeUtil.expandAll(tree); }
+            @Override public boolean canExpand() { return true; }
+            @Override public void collapseAll() { TreeUtil.collapseAll(tree, 1); }
+            @Override public boolean canCollapse() { return true; }
         };
         CommonActionsManager actionsManager = CommonActionsManager.getInstance();
         actionGroup.add(actionsManager.createExpandAllAction(treeExpander, tree));
@@ -548,14 +520,6 @@ public class AICodePanel extends JPanel implements Disposable {
     // ============================================================
 
     private class GroupSelectorAction extends ComboBoxAction {
-        @NotNull
-        @Override
-        public JComponent createCustomComponent(@NotNull Presentation presentation, @NotNull String place) {
-            JComponent component = super.createCustomComponent(presentation, place);
-            // Optionally constrain width
-            return component;
-        }
-
         @Override
         public void update(@NotNull AnActionEvent e) {
             Project p = e.getProject();
@@ -575,10 +539,10 @@ public class AICodePanel extends JPanel implements Disposable {
             String activeGroup = service.getActiveGroupName();
             Set<String> allGroups = service.getGroupNames();
 
-            // 1. List existing groups
             List<String> sortedGroups = new ArrayList<>(allGroups);
             Collections.sort(sortedGroups);
 
+            // 1. Switch Group
             for (String groupName : sortedGroups) {
                 boolean isSelected = groupName.equals(activeGroup);
                 group.add(new AnAction(groupName, "Switch to " + groupName, isSelected ? AllIcons.Actions.Checked : null) {
@@ -591,8 +555,8 @@ public class AICodePanel extends JPanel implements Disposable {
 
             group.addSeparator();
 
-            // 2. Add New Group
-            group.add(new AnAction("New Group...", "Create a new empty context group", AllIcons.General.Add) {
+            // 2. New Group (No Icon)
+            group.add(new AnAction("New Group...", "Create a new empty context group", null) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
                     String name = Messages.showInputDialog(project, "Enter name for new context group:", "New Group", Messages.getQuestionIcon());
@@ -602,7 +566,29 @@ public class AICodePanel extends JPanel implements Disposable {
                 }
             });
 
-            // 3. Remove Current Group
+            // 3. Rename Group
+            group.add(new AnAction("Rename Current Group...", "Rename the currently active group", null) {
+                @Override
+                public void actionPerformed(@NotNull AnActionEvent e) {
+                    String current = service.getActiveGroupName();
+                    String newName = Messages.showInputDialog(project,
+                        "Rename group '" + current + "' to:",
+                        "Rename Group",
+                        Messages.getQuestionIcon(),
+                        current,
+                        null);
+
+                    if (newName != null && !newName.trim().isEmpty() && !newName.equals(current)) {
+                        if (service.getGroupNames().contains(newName)) {
+                            Messages.showErrorDialog(project, "Group '" + newName + "' already exists.", "Rename Error");
+                        } else {
+                            service.renameGroup(current, newName.trim());
+                        }
+                    }
+                }
+            });
+
+            // 4. Delete Group
             group.add(new AnAction("Delete Current Group", "Delete the currently active group", AllIcons.General.Remove) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
@@ -616,7 +602,6 @@ public class AICodePanel extends JPanel implements Disposable {
                 }
                 @Override
                 public void update(@NotNull AnActionEvent e) {
-                    // Prevent deleting if it's the only one left
                     e.getPresentation().setEnabled(service.getGroupNames().size() > 1);
                 }
             });
@@ -640,11 +625,7 @@ public class AICodePanel extends JPanel implements Disposable {
         }
 
         try {
-            String markdown = MarkdownBuilder.buildMarkdown(
-                    project,
-                    filePaths,
-                    service::getFileFromPath
-            );
+            String markdown = MarkdownBuilder.buildMarkdown(project, filePaths, service::getFileFromPath);
             ClipboardService.copyToClipboard(markdown);
             showNotification("Copied group '" + group + "' (" + filePaths.size() + " files) to clipboard.", NotificationType.INFORMATION);
         } catch (Exception ex) {
@@ -734,7 +715,6 @@ public class AICodePanel extends JPanel implements Disposable {
             rootNode.removeAllChildren();
             AICodeFileService service = AICodeFileService.getInstance(project);
 
-            // Update Root Display with Group Name
             AICodeNodeData rootData = (AICodeNodeData) rootNode.getUserObject();
             String groupName = service.getActiveGroupName();
             rootData.displayName = "Group: " + groupName;
@@ -835,7 +815,6 @@ public class AICodePanel extends JPanel implements Disposable {
 """
 
 def write_file(path, content):
-    # Ensure directory exists
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w', encoding='utf-8') as f:
         f.write(content)
@@ -846,4 +825,4 @@ write_file(FILE_PATHS["config_model"], config_model_content)
 write_file(FILE_PATHS["service"], service_content)
 write_file(FILE_PATHS["panel"], panel_content)
 
-print("AICode Context Groups implementation completed.")
+print("AICode Context Groups implementation updated (No Icon, Rename, JSON Optimized).")
