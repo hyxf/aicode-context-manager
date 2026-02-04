@@ -1,288 +1,849 @@
 import os
-import sys
 
-def create_file(path, content):
-    # 如果路径以 / 或 \ 开头，去掉它
-    if path.startswith('/') or path.startswith('\\'):
-        path = path[1:]
+# 定义文件路径
+FILE_PATHS = {
+    "config_model": os.path.join("src", "main", "java", "com", "aicode", "model", "AICodeConfig.java"),
+    "service": os.path.join("src", "main", "java", "com", "aicode", "service", "AICodeFileService.java"),
+    "panel": os.path.join("src", "main", "java", "com", "aicode", "ui", "AICodePanel.java")
+}
 
-    # 获取当前工作目录
-    base_dir = os.getcwd()
-    full_path = os.path.join(base_dir, path)
-    dir_name = os.path.dirname(full_path)
-
-    # 简单检查：如果您在错误的目录下运行（例如根目录下没有 src），给予提示
-    if path.startswith('src') and not os.path.exists(os.path.join(base_dir, 'src')):
-        print(f"Warning: 'src' directory not found in {base_dir}. Are you in the project root?")
-
-    # 确保目录存在
-    if not os.path.exists(dir_name):
-        try:
-            os.makedirs(dir_name)
-        except OSError as e:
-            print(f"Error creating directory {dir_name}: {e}")
-            return
-
-    # 写入文件
-    try:
-        with open(full_path, 'w', encoding='utf-8') as f:
-            if content.startswith('\n'):
-                f.write(content[1:])
-            else:
-                f.write(content)
-        print(f"Updated: {path}")
-    except IOError as e:
-        print(f"Error writing to {full_path}: {e}")
-
-files = {}
-
-# ================= 修正路径后的文件列表 =================
-
-# 1. AddToAICodeAction.java (路径去掉了项目名前缀)
-files['src/main/java/com/aicode/action/AddToAICodeAction.java'] = r"""
-package com.aicode.action;
-
-import com.aicode.service.AICodeFileService;
-import com.intellij.openapi.actionSystem.ActionUpdateThread;
-import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.CommonDataKeys;
-import com.intellij.openapi.project.DumbAware;
-import com.intellij.openapi.project.Project;
-import com.intellij.openapi.vfs.VfsUtilCore;
-import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.openapi.vfs.VirtualFileVisitor;
-import org.jetbrains.annotations.NotNull;
+# 1. 新增 AICodeConfig.java
+# ------------------------------------------------------------------
+config_model_content = """package com.aicode.model;
 
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 /**
- * Action to add file or directory (recursively) to AICode context
- * Supports multiple file selection.
+ * Data model for .aicode.json
+ * Supports multiple context groups.
  */
-public class AddToAICodeAction extends AnAction implements DumbAware {
+public class AICodeConfig {
+    public static final String DEFAULT_GROUP = "Default";
 
-    @Override
-    public void actionPerformed(@NotNull AnActionEvent e) {
-        Project project = e.getProject();
-        // Support multi-selection
-        VirtualFile[] files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
+    private String activeGroup = DEFAULT_GROUP;
+    private Map<String, List<String>> groups = new HashMap<>();
 
-        if (project == null || files == null || files.length == 0) {
-            return;
-        }
-
-        AICodeFileService service = AICodeFileService.getInstance(project);
-        VirtualFile baseDir = project.getBaseDir();
-
-        // Batch operation to avoid multiple refreshes
-        List<String> currentPaths = new ArrayList<>(service.readFilePaths());
-        Set<String> existingSet = new HashSet<>(currentPaths);
-        List<String> newPathsToAdd = new ArrayList<>();
-
-        for (VirtualFile file : files) {
-            // Prevent adding project root
-            if (file.equals(baseDir)) {
-                continue;
-            }
-
-            if (file.isDirectory()) {
-                // Recursively visit directory
-                VfsUtilCore.visitChildrenRecursively(file, new VirtualFileVisitor<Void>() {
-                    @Override
-                    public boolean visitFile(@NotNull VirtualFile child) {
-                        if (!child.isDirectory() && !".aicode.json".equals(child.getName())) {
-                            String relativePath = service.getRelativePath(child);
-                            if (relativePath != null && !existingSet.contains(relativePath)) {
-                                newPathsToAdd.add(relativePath);
-                            }
-                        }
-                        return true;
-                    }
-                });
-            } else {
-                // Single file
-                if (!".aicode.json".equals(file.getName())) {
-                    String relativePath = service.getRelativePath(file);
-                    if (relativePath != null && !existingSet.contains(relativePath)) {
-                        newPathsToAdd.add(relativePath);
-                    }
-                }
-            }
-        }
-
-        if (!newPathsToAdd.isEmpty()) {
-            currentPaths.addAll(newPathsToAdd);
-            service.writeFilePaths(currentPaths);
-        }
+    public AICodeConfig() {
+        // Ensure default group always exists
+        groups.put(DEFAULT_GROUP, new ArrayList<>());
     }
 
-    @Override
-    public void update(@NotNull AnActionEvent e) {
-        Project project = e.getProject();
-        VirtualFile[] files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
-
-        boolean visible = false;
-        if (project != null && files != null && files.length > 0) {
-            AICodeFileService service = AICodeFileService.getInstance(project);
-
-            // Check if ANY of the selected files can be added
-            for (VirtualFile file : files) {
-                // 1. Exclude Project Root
-                boolean isRoot = file.equals(project.getBaseDir());
-                // 2. Exclude config file
-                boolean isConfigFile = ".aicode.json".equals(file.getName());
-
-                if (!isRoot && !isConfigFile) {
-                    if (file.isDirectory()) {
-                        // Directory is always addable (simplified)
-                        visible = true;
-                    } else {
-                        // File is visible if NOT in list
-                        if (!service.containsFile(file)) {
-                            visible = true;
-                        }
-                    }
-                }
-
-                // If we found at least one valid candidate, enable the action
-                if (visible) break;
-            }
+    public String getActiveGroup() {
+        if (activeGroup == null || activeGroup.isEmpty()) {
+            activeGroup = DEFAULT_GROUP;
         }
-
-        e.getPresentation().setEnabledAndVisible(visible);
+        return activeGroup;
     }
 
-    @Override
-    public @NotNull ActionUpdateThread getActionUpdateThread() {
-        return ActionUpdateThread.BGT;
+    public void setActiveGroup(String activeGroup) {
+        this.activeGroup = activeGroup;
+    }
+
+    public Map<String, List<String>> getGroups() {
+        if (groups == null) {
+            groups = new HashMap<>();
+        }
+        return groups;
+    }
+
+    public void setGroups(Map<String, List<String>> groups) {
+        this.groups = groups;
+    }
+
+    /**
+     * Helper to get paths for current active group
+     */
+    public List<String> getActivePaths() {
+        return getGroups().computeIfAbsent(getActiveGroup(), k -> new ArrayList<>());
+    }
+
+    /**
+     * Helper to set paths for current active group
+     */
+    public void setActivePaths(List<String> paths) {
+        getGroups().put(getActiveGroup(), paths != null ? paths : new ArrayList<>());
     }
 }
 """
 
-# 2. RemoveFromAICodeAction.java (路径去掉了项目名前缀)
-files['src/main/java/com/aicode/action/RemoveFromAICodeAction.java'] = r"""
-package com.aicode.action;
+# 2. 重写 AICodeFileService.java
+# ------------------------------------------------------------------
+service_content = """package com.aicode.service;
 
-import com.aicode.service.AICodeFileService;
-import com.intellij.openapi.actionSystem.ActionUpdateThread;
-import com.intellij.openapi.actionSystem.AnAction;
-import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.CommonDataKeys;
-import com.intellij.openapi.project.DumbAware;
+import com.aicode.model.AICodeConfig;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonSyntaxException;
+import com.google.gson.reflect.TypeToken;
+import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.util.messages.Topic;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
+import java.lang.reflect.Type;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
-import java.util.HashSet;
 
 /**
- * Action to remove file or directory from AICode context
- * Supports multiple file selection.
+ * Service for managing .aicode.json file operations with Context Groups support.
  */
-public class RemoveFromAICodeAction extends AnAction implements DumbAware {
+public class AICodeFileService {
+    private static final String AICODE_FILE_NAME = ".aicode.json";
+    private final Project project;
+    private final Gson gson;
 
-    @Override
-    public void actionPerformed(@NotNull AnActionEvent e) {
-        Project project = e.getProject();
-        // Support multi-selection
-        VirtualFile[] files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
+    // Topic for notifications
+    public static final Topic<AICodeStateListener> AICODE_TOPIC =
+            Topic.create("AICode Context Changed", AICodeStateListener.class);
 
-        if (project == null || files == null || files.length == 0) {
+    public interface AICodeStateListener {
+        void onContextChanged();
+    }
+
+    public AICodeFileService(Project project) {
+        this.project = project;
+        this.gson = new GsonBuilder().setPrettyPrinting().create();
+    }
+
+    @NotNull
+    public static AICodeFileService getInstance(@NotNull Project project) {
+        return project.getService(AICodeFileService.class);
+    }
+
+    /**
+     * Get or create .aicode.json file in project root
+     */
+    @Nullable
+    public VirtualFile getOrCreateAICodeFile() {
+        VirtualFile baseDir = project.getBaseDir();
+        if (baseDir == null) {
+            return null;
+        }
+
+        VirtualFile aiCodeFile = baseDir.findChild(AICODE_FILE_NAME);
+        if (aiCodeFile != null) {
+            return aiCodeFile;
+        }
+
+        // Create new file with empty config
+        try {
+            return WriteCommandAction.writeCommandAction(project).compute(() -> {
+                try {
+                    VirtualFile newFile = baseDir.createChildData(this, AICODE_FILE_NAME);
+                    AICodeConfig defaultConfig = new AICodeConfig();
+                    String json = gson.toJson(defaultConfig);
+                    newFile.setBinaryContent(json.getBytes(StandardCharsets.UTF_8));
+                    return newFile;
+                } catch (IOException e) {
+                    return null;
+                }
+            });
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Read the full configuration.
+     * Handles migration from old List format to new Object format.
+     */
+    @NotNull
+    public AICodeConfig readConfig() {
+        VirtualFile aiCodeFile = getOrCreateAICodeFile();
+        if (aiCodeFile == null) {
+            return new AICodeConfig();
+        }
+
+        try {
+            String content = new String(aiCodeFile.contentsToByteArray(), StandardCharsets.UTF_8);
+            if (content.trim().isEmpty()) {
+                return new AICodeConfig();
+            }
+
+            // 1. Try parse as new Config object
+            try {
+                AICodeConfig config = gson.fromJson(content, AICodeConfig.class);
+                // Basic validation to ensure it wasn't parsed as an empty object from a list
+                if (config != null && config.getGroups() != null && !config.getGroups().isEmpty()) {
+                    return config;
+                }
+            } catch (JsonSyntaxException ignored) {
+                // Not a valid object, might be a list (old format)
+            }
+
+            // 2. Fallback: Try parse as List<String> (Old Format)
+            try {
+                Type listType = new TypeToken<ArrayList<String>>() {}.getType();
+                List<String> oldPaths = gson.fromJson(content, listType);
+
+                if (oldPaths != null) {
+                    // Migrate to new format
+                    AICodeConfig config = new AICodeConfig();
+                    config.setActiveGroup(AICodeConfig.DEFAULT_GROUP);
+                    config.getGroups().put(AICodeConfig.DEFAULT_GROUP, oldPaths);
+                    return config;
+                }
+            } catch (JsonSyntaxException ignored) {
+                // Completely invalid
+            }
+
+            return new AICodeConfig();
+
+        } catch (Exception e) {
+            return new AICodeConfig();
+        }
+    }
+
+    /**
+     * Save configuration to file
+     */
+    public void saveConfig(@NotNull AICodeConfig config) {
+        VirtualFile aiCodeFile = getOrCreateAICodeFile();
+        if (aiCodeFile == null) {
             return;
         }
 
-        AICodeFileService service = AICodeFileService.getInstance(project);
-        List<String> currentPaths = service.readFilePaths();
-        Set<String> pathsToRemove = new HashSet<>();
-
-        for (VirtualFile file : files) {
-            if (file.isDirectory()) {
-                // Collect all relative paths inside this directory that need removal
-                String dirRelativePath = service.getRelativePath(file);
-                if (dirRelativePath != null) {
-                    // Determine prefix (e.g., "src/main/java/")
-                    String prefix = dirRelativePath.endsWith("/") ? dirRelativePath : dirRelativePath + "/";
-
-                    for (String path : currentPaths) {
-                        if (path.startsWith(prefix) || path.equals(dirRelativePath)) {
-                            pathsToRemove.add(path);
-                        }
-                    }
-                }
-            } else {
-                // Single file
-                String relativePath = service.getRelativePath(file);
-                if (relativePath != null) {
-                    pathsToRemove.add(relativePath);
-                }
+        WriteCommandAction.runWriteCommandAction(project, () -> {
+            try {
+                String json = gson.toJson(config);
+                aiCodeFile.setBinaryContent(json.getBytes(StandardCharsets.UTF_8));
+                notifyChange();
+            } catch (IOException e) {
+                // Handle error
             }
-        }
+        });
+    }
 
-        if (!pathsToRemove.isEmpty()) {
-            currentPaths.removeAll(pathsToRemove);
-            service.writeFilePaths(currentPaths);
+    // ============================================================
+    // Context Group Management
+    // ============================================================
+
+    public String getActiveGroupName() {
+        return readConfig().getActiveGroup();
+    }
+
+    public Set<String> getGroupNames() {
+        return readConfig().getGroups().keySet();
+    }
+
+    public void setActiveGroup(String groupName) {
+        AICodeConfig config = readConfig();
+        if (config.getGroups().containsKey(groupName)) {
+            config.setActiveGroup(groupName);
+            saveConfig(config);
         }
     }
 
-    @Override
-    public void update(@NotNull AnActionEvent e) {
-        Project project = e.getProject();
-        VirtualFile[] files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
-
-        boolean visible = false;
-        if (project != null && files != null && files.length > 0) {
-            AICodeFileService service = AICodeFileService.getInstance(project);
-
-            // Check if ANY of the selected files can be removed
-            for (VirtualFile file : files) {
-                if (file.isDirectory()) {
-                    boolean isRoot = file.equals(project.getBaseDir());
-                    if (!isRoot) {
-                         String dirPath = service.getRelativePath(file);
-                         if (dirPath != null) {
-                             String prefix = dirPath.endsWith("/") ? dirPath : dirPath + "/";
-                             // Check if any tracked file starts with this directory
-                             List<String> paths = service.readFilePaths();
-                             for (String path : paths) {
-                                 if (path.startsWith(prefix)) {
-                                     visible = true;
-                                     break;
-                                 }
-                             }
-                         }
-                    }
-                } else {
-                    // Single file
-                    if (service.containsFile(file)) {
-                        visible = true;
-                    }
-                }
-
-                if (visible) break;
-            }
+    public void addGroup(String groupName) {
+        AICodeConfig config = readConfig();
+        if (!config.getGroups().containsKey(groupName)) {
+            config.getGroups().put(groupName, new ArrayList<>());
+            config.setActiveGroup(groupName); // Auto switch to new group
+            saveConfig(config);
         }
-
-        e.getPresentation().setEnabledAndVisible(visible);
     }
 
-    @Override
-    public @NotNull ActionUpdateThread getActionUpdateThread() {
-        return ActionUpdateThread.BGT;
+    public void removeGroup(String groupName) {
+        AICodeConfig config = readConfig();
+        // Don't allow removing the last group, or ensure at least one exists
+        if (config.getGroups().size() <= 1 && config.getGroups().containsKey(groupName)) {
+            // If deleting the only group, just clear it or rename to Default
+            config.getGroups().remove(groupName);
+            config.getGroups().put(AICodeConfig.DEFAULT_GROUP, new ArrayList<>());
+            config.setActiveGroup(AICodeConfig.DEFAULT_GROUP);
+        } else {
+            config.getGroups().remove(groupName);
+            // If we removed the active group, switch to default or any other
+            if (groupName.equals(config.getActiveGroup())) {
+                String nextGroup = config.getGroups().keySet().iterator().next();
+                config.setActiveGroup(nextGroup);
+            }
+        }
+        saveConfig(config);
+    }
+
+    // ============================================================
+    // File Path Management (Operates on ACTIVE Group)
+    // ============================================================
+
+    /**
+     * Read file paths from CURRENT ACTIVE group
+     */
+    @NotNull
+    public List<String> readFilePaths() {
+        return readConfig().getActivePaths();
+    }
+
+    /**
+     * Write file paths to CURRENT ACTIVE group
+     */
+    public void writeFilePaths(@NotNull List<String> paths) {
+        AICodeConfig config = readConfig();
+        config.setActivePaths(paths);
+        saveConfig(config);
+    }
+
+    /**
+     * Add file to .aicode.json (Active Group)
+     */
+    public void addFile(@NotNull VirtualFile file) {
+        String relativePath = getRelativePath(file);
+        if (relativePath == null) return;
+
+        WriteCommandAction.runWriteCommandAction(project, "Add to AICode", null, () -> {
+            AICodeConfig config = readConfig();
+            List<String> paths = config.getActivePaths();
+            if (!paths.contains(relativePath)) {
+                paths.add(relativePath);
+                config.setActivePaths(paths);
+                saveConfig(config);
+            }
+        });
+    }
+
+    /**
+     * Remove file from .aicode.json (Active Group)
+     */
+    public void removeFile(@NotNull VirtualFile file) {
+        String relativePath = getRelativePath(file);
+        if (relativePath == null) return;
+
+        WriteCommandAction.runWriteCommandAction(project, "Remove from AICode", null, () -> {
+            AICodeConfig config = readConfig();
+            List<String> paths = config.getActivePaths();
+            if (paths.remove(relativePath)) {
+                config.setActivePaths(paths);
+                saveConfig(config);
+            }
+        });
+    }
+
+    /**
+     * Remove file path from .aicode.json (Active Group)
+     */
+    public void removeFilePath(@NotNull String path) {
+        WriteCommandAction.runWriteCommandAction(project, () -> {
+            AICodeConfig config = readConfig();
+            List<String> paths = config.getActivePaths();
+            if (paths.remove(path)) {
+                config.setActivePaths(paths);
+                saveConfig(config);
+            }
+        });
+    }
+
+    /**
+     * Update file path in .aicode.json (Active Group)
+     */
+    public void updateFilePath(@NotNull String oldPath, @NotNull String newPath) {
+        WriteCommandAction.runWriteCommandAction(project, () -> {
+            AICodeConfig config = readConfig();
+            List<String> paths = config.getActivePaths();
+            int index = paths.indexOf(oldPath);
+            if (index >= 0) {
+                paths.set(index, newPath);
+                config.setActivePaths(paths);
+                saveConfig(config);
+            }
+        });
+    }
+
+    public void notifyChange() {
+        if (project.isDisposed()) return;
+        project.getMessageBus().syncPublisher(AICODE_TOPIC).onContextChanged();
+    }
+
+    public boolean containsFile(@NotNull VirtualFile file) {
+        String relativePath = getRelativePath(file);
+        if (relativePath == null) return false;
+        return readFilePaths().contains(relativePath);
+    }
+
+    @Nullable
+    public String getRelativePath(@NotNull VirtualFile file) {
+        VirtualFile baseDir = project.getBaseDir();
+        if (baseDir == null) return null;
+
+        String basePath = baseDir.getPath();
+        String filePath = file.getPath();
+
+        if (!filePath.startsWith(basePath)) return null;
+
+        String relativePath = filePath.substring(basePath.length());
+        if (relativePath.startsWith("/")) {
+            relativePath = relativePath.substring(1);
+        }
+
+        return relativePath;
+    }
+
+    @Nullable
+    public VirtualFile getFileFromPath(@NotNull String relativePath) {
+        VirtualFile baseDir = project.getBaseDir();
+        if (baseDir == null) return null;
+        return baseDir.findFileByRelativePath(relativePath);
     }
 }
 """
 
-def main():
-    print("Updating action files (path corrected)...")
-    for path, content in files.items():
-        create_file(path, content)
-    print("\nDone.")
+# 3. 重写 AICodePanel.java
+# ------------------------------------------------------------------
+panel_content = """package com.aicode.ui;
 
-if __name__ == '__main__':
-    main()
+import com.aicode.service.AICodeFileService;
+import com.aicode.util.ClipboardService;
+import com.aicode.util.MarkdownBuilder;
+import com.intellij.icons.AllIcons;
+import com.intellij.ide.CommonActionsManager;
+import com.intellij.ide.TreeExpander;
+import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationType;
+import com.intellij.notification.Notifications;
+import com.intellij.openapi.Disposable;
+import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.actionSystem.ex.ComboBoxAction;
+import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.ui.ColoredTreeCellRenderer;
+import com.intellij.ui.SimpleTextAttributes;
+import com.intellij.ui.components.JBScrollPane;
+import com.intellij.ui.treeStructure.Tree;
+import com.intellij.util.ui.tree.TreeUtil;
+import org.jetbrains.annotations.NotNull;
+
+import javax.swing.*;
+import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeModel;
+import javax.swing.tree.TreePath;
+import javax.swing.tree.TreeSelectionModel;
+import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.*;
+import java.util.List;
+
+/**
+ * Panel for AICode Tool Window with Tree View and Context Groups
+ */
+public class AICodePanel extends JPanel implements Disposable {
+    private final Project project;
+    private final Tree tree;
+    private final DefaultTreeModel treeModel;
+    private final DefaultMutableTreeNode rootNode;
+
+    public AICodePanel(@NotNull Project project) {
+        this.project = project;
+
+        // Init Tree
+        this.rootNode = new DefaultMutableTreeNode(new AICodeNodeData("Project", null, true));
+        this.treeModel = new DefaultTreeModel(rootNode);
+        this.tree = new Tree(treeModel);
+
+        setLayout(new BorderLayout());
+        setupUI();
+        setupListeners();
+
+        // Initial load
+        refreshTree();
+
+        // Subscribe to changes
+        project.getMessageBus().connect(this).subscribe(
+                AICodeFileService.AICODE_TOPIC,
+                new AICodeFileService.AICodeStateListener() {
+                    @Override
+                    public void onContextChanged() {
+                        refreshTree();
+                    }
+                }
+        );
+    }
+
+    private void setupUI() {
+        // 1. Configure Tree Appearance
+        tree.setRootVisible(true);
+        tree.setShowsRootHandles(true);
+        tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
+        tree.setCellRenderer(new AICodeTreeCellRenderer());
+        tree.getEmptyText().setText("No files in this context group.");
+
+        // 2. Scroll Pane
+        JBScrollPane scrollPane = new JBScrollPane(tree);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        add(scrollPane, BorderLayout.CENTER);
+
+        // 3. Toolbar
+        add(createToolbar(), BorderLayout.NORTH);
+    }
+
+    private JComponent createToolbar() {
+        DefaultActionGroup actionGroup = new DefaultActionGroup();
+
+        // Group Selector
+        actionGroup.add(new GroupSelectorAction());
+        actionGroup.addSeparator();
+
+        // Open Config
+        actionGroup.add(new AnAction("Open Configuration", "Open .aicode.json configuration file", AllIcons.General.Settings) {
+            @Override
+            public void actionPerformed(@NotNull AnActionEvent e) {
+                openAICodeFile();
+            }
+        });
+
+        // Copy as Markdown
+        actionGroup.add(new AnAction("Copy as Markdown", "Export current context group as Markdown", AllIcons.Actions.Copy) {
+            @Override
+            public void actionPerformed(@NotNull AnActionEvent e) {
+                copyMarkdownToClipboard();
+            }
+        });
+
+        actionGroup.addSeparator();
+
+        // Expand/Collapse
+        TreeExpander treeExpander = new TreeExpander() {
+            @Override
+            public void expandAll() {
+                TreeUtil.expandAll(tree);
+            }
+            @Override
+            public boolean canExpand() { return true; }
+            @Override
+            public void collapseAll() {
+                TreeUtil.collapseAll(tree, 1);
+            }
+            @Override
+            public boolean canCollapse() { return true; }
+        };
+        CommonActionsManager actionsManager = CommonActionsManager.getInstance();
+        actionGroup.add(actionsManager.createExpandAllAction(treeExpander, tree));
+        actionGroup.add(actionsManager.createCollapseAllAction(treeExpander, tree));
+
+        actionGroup.addSeparator();
+        actionGroup.add(new AnAction("Refresh", "Refresh tree", AllIcons.Actions.Refresh) {
+            @Override
+            public void actionPerformed(@NotNull AnActionEvent e) {
+                refreshTree();
+            }
+        });
+
+        ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar("AICodeToolbar", actionGroup, true);
+        toolbar.setTargetComponent(this);
+        return toolbar.getComponent();
+    }
+
+    // ============================================================
+    // Group Selector Logic
+    // ============================================================
+
+    private class GroupSelectorAction extends ComboBoxAction {
+        @NotNull
+        @Override
+        public JComponent createCustomComponent(@NotNull Presentation presentation, @NotNull String place) {
+            JComponent component = super.createCustomComponent(presentation, place);
+            // Optionally constrain width
+            return component;
+        }
+
+        @Override
+        public void update(@NotNull AnActionEvent e) {
+            Project p = e.getProject();
+            if (p != null) {
+                String activeGroup = AICodeFileService.getInstance(p).getActiveGroupName();
+                e.getPresentation().setText(activeGroup);
+                e.getPresentation().setDescription("Current Context Group: " + activeGroup);
+                e.getPresentation().setIcon(AllIcons.Nodes.ModuleGroup);
+            }
+        }
+
+        @NotNull
+        @Override
+        protected DefaultActionGroup createPopupActionGroup(JComponent button) {
+            DefaultActionGroup group = new DefaultActionGroup();
+            AICodeFileService service = AICodeFileService.getInstance(project);
+            String activeGroup = service.getActiveGroupName();
+            Set<String> allGroups = service.getGroupNames();
+
+            // 1. List existing groups
+            List<String> sortedGroups = new ArrayList<>(allGroups);
+            Collections.sort(sortedGroups);
+
+            for (String groupName : sortedGroups) {
+                boolean isSelected = groupName.equals(activeGroup);
+                group.add(new AnAction(groupName, "Switch to " + groupName, isSelected ? AllIcons.Actions.Checked : null) {
+                    @Override
+                    public void actionPerformed(@NotNull AnActionEvent e) {
+                        service.setActiveGroup(groupName);
+                    }
+                });
+            }
+
+            group.addSeparator();
+
+            // 2. Add New Group
+            group.add(new AnAction("New Group...", "Create a new empty context group", AllIcons.General.Add) {
+                @Override
+                public void actionPerformed(@NotNull AnActionEvent e) {
+                    String name = Messages.showInputDialog(project, "Enter name for new context group:", "New Group", Messages.getQuestionIcon());
+                    if (name != null && !name.trim().isEmpty()) {
+                        service.addGroup(name.trim());
+                    }
+                }
+            });
+
+            // 3. Remove Current Group
+            group.add(new AnAction("Delete Current Group", "Delete the currently active group", AllIcons.General.Remove) {
+                @Override
+                public void actionPerformed(@NotNull AnActionEvent e) {
+                    String current = service.getActiveGroupName();
+                    int result = Messages.showYesNoDialog(project,
+                        "Are you sure you want to delete context group '" + current + "'?",
+                        "Delete Group", Messages.getWarningIcon());
+                    if (result == Messages.YES) {
+                        service.removeGroup(current);
+                    }
+                }
+                @Override
+                public void update(@NotNull AnActionEvent e) {
+                    // Prevent deleting if it's the only one left
+                    e.getPresentation().setEnabled(service.getGroupNames().size() > 1);
+                }
+            });
+
+            return group;
+        }
+    }
+
+    // ============================================================
+    // Other Panel Logic
+    // ============================================================
+
+    private void copyMarkdownToClipboard() {
+        AICodeFileService service = AICodeFileService.getInstance(project);
+        List<String> filePaths = service.readFilePaths();
+        String group = service.getActiveGroupName();
+
+        if (filePaths.isEmpty()) {
+            showNotification("Group '" + group + "' is empty.", NotificationType.WARNING);
+            return;
+        }
+
+        try {
+            String markdown = MarkdownBuilder.buildMarkdown(
+                    project,
+                    filePaths,
+                    service::getFileFromPath
+            );
+            ClipboardService.copyToClipboard(markdown);
+            showNotification("Copied group '" + group + "' (" + filePaths.size() + " files) to clipboard.", NotificationType.INFORMATION);
+        } catch (Exception ex) {
+            showNotification("Failed to export: " + ex.getMessage(), NotificationType.ERROR);
+        }
+    }
+
+    private void showNotification(String content, NotificationType type) {
+        Notification notification = new Notification("AICode", "AICode Context", content, type);
+        Notifications.Bus.notify(notification, project);
+    }
+
+    private void setupListeners() {
+        tree.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) {
+                    TreePath path = tree.getPathForLocation(e.getX(), e.getY());
+                    if (path != null) {
+                        DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
+                        openFileFromNode(node);
+                    }
+                }
+            }
+        });
+
+        tree.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    TreePath path = tree.getPathForLocation(e.getX(), e.getY());
+                    if (path != null) {
+                        tree.setSelectionPath(path);
+                        showContextMenu(e, (DefaultMutableTreeNode) path.getLastPathComponent());
+                    }
+                }
+            }
+        });
+    }
+
+    private void showContextMenu(MouseEvent e, DefaultMutableTreeNode node) {
+        if (node == null || node.getUserObject() == null) return;
+        AICodeNodeData data = (AICodeNodeData) node.getUserObject();
+        JPopupMenu menu = new JPopupMenu();
+        String removeText = data.isDirectory ? "Remove Directory from Context" : "Remove File from Context";
+        JMenuItem removeItem = new JMenuItem(removeText);
+        removeItem.setIcon(AllIcons.Actions.Cancel);
+        removeItem.addActionListener(actionEvent -> removeNodeContext(node));
+        menu.add(removeItem);
+        menu.show(tree, e.getX(), e.getY());
+    }
+
+    private void removeNodeContext(DefaultMutableTreeNode node) {
+        AICodeFileService service = AICodeFileService.getInstance(project);
+        List<String> pathsToRemove = new ArrayList<>();
+        collectPaths(node, pathsToRemove);
+        for (String path : pathsToRemove) {
+            service.removeFilePath(path);
+        }
+    }
+
+    private void collectPaths(DefaultMutableTreeNode node, List<String> collector) {
+        Object userObject = node.getUserObject();
+        if (userObject instanceof AICodeNodeData) {
+            AICodeNodeData data = (AICodeNodeData) userObject;
+            if (!data.isDirectory && data.fullRelativePath != null) {
+                collector.add(data.fullRelativePath);
+            }
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            collectPaths((DefaultMutableTreeNode) node.getChildAt(i), collector);
+        }
+    }
+
+    private void openFileFromNode(DefaultMutableTreeNode node) {
+        Object userObject = node.getUserObject();
+        if (userObject instanceof AICodeNodeData) {
+            AICodeNodeData data = (AICodeNodeData) userObject;
+            if (!data.isDirectory && data.virtualFile != null) {
+                FileEditorManager.getInstance(project).openFile(data.virtualFile, true);
+            }
+        }
+    }
+
+    public void refreshTree() {
+        SwingUtilities.invokeLater(() -> {
+            rootNode.removeAllChildren();
+            AICodeFileService service = AICodeFileService.getInstance(project);
+
+            // Update Root Display with Group Name
+            AICodeNodeData rootData = (AICodeNodeData) rootNode.getUserObject();
+            String groupName = service.getActiveGroupName();
+            rootData.displayName = "Group: " + groupName;
+            rootData.virtualFile = project.getBaseDir();
+
+            List<String> paths = service.readFilePaths();
+            Collections.sort(paths);
+            buildTreeStructure(paths, service);
+            treeModel.reload();
+            TreeUtil.expandAll(tree);
+        });
+    }
+
+    private void buildTreeStructure(List<String> paths, AICodeFileService service) {
+        Map<String, DefaultMutableTreeNode> directoryNodes = new HashMap<>();
+        for (String path : paths) {
+            String[] parts = path.split("/");
+            DefaultMutableTreeNode currentNode = rootNode;
+            String currentPathAccumulator = "";
+            for (int i = 0; i < parts.length; i++) {
+                String part = parts[i];
+                boolean isLast = (i == parts.length - 1);
+                if (!currentPathAccumulator.isEmpty()) currentPathAccumulator += "/";
+                currentPathAccumulator += part;
+
+                if (isLast) {
+                    VirtualFile file = service.getFileFromPath(path);
+                    AICodeNodeData fileData = new AICodeNodeData(part, path, false);
+                    fileData.virtualFile = file;
+                    currentNode.add(new DefaultMutableTreeNode(fileData));
+                } else {
+                    String dirPath = currentPathAccumulator;
+                    if (directoryNodes.containsKey(dirPath)) {
+                        currentNode = directoryNodes.get(dirPath);
+                    } else {
+                        VirtualFile dirFile = service.getFileFromPath(dirPath);
+                        AICodeNodeData dirData = new AICodeNodeData(part, dirPath, true);
+                        dirData.virtualFile = dirFile;
+                        DefaultMutableTreeNode dirNode = new DefaultMutableTreeNode(dirData);
+                        directoryNodes.put(dirPath, dirNode);
+                        currentNode.add(dirNode);
+                        currentNode = dirNode;
+                    }
+                }
+            }
+        }
+    }
+
+    private void openAICodeFile() {
+        AICodeFileService service = AICodeFileService.getInstance(project);
+        VirtualFile aiCodeFile = service.getOrCreateAICodeFile();
+        if (aiCodeFile != null) {
+            FileEditorManager.getInstance(project).openFile(aiCodeFile, true);
+        }
+    }
+
+    @Override
+    public void dispose() {}
+
+    private static class AICodeNodeData {
+        String displayName;
+        String fullRelativePath;
+        boolean isDirectory;
+        VirtualFile virtualFile;
+        public AICodeNodeData(String displayName, String fullRelativePath, boolean isDirectory) {
+            this.displayName = displayName;
+            this.fullRelativePath = fullRelativePath;
+            this.isDirectory = isDirectory;
+        }
+        @Override public String toString() { return displayName; }
+    }
+
+    private static class AICodeTreeCellRenderer extends ColoredTreeCellRenderer {
+        @Override
+        public void customizeCellRenderer(@NotNull JTree tree, Object value, boolean selected, boolean expanded, boolean leaf, int row, boolean hasFocus) {
+            if (!(value instanceof DefaultMutableTreeNode)) return;
+            DefaultMutableTreeNode node = (DefaultMutableTreeNode) value;
+            Object userObject = node.getUserObject();
+            if (userObject instanceof AICodeNodeData) {
+                AICodeNodeData data = (AICodeNodeData) userObject;
+                if (data.displayName.startsWith("Group: ")) {
+                    setIcon(AllIcons.Nodes.ModuleGroup);
+                } else if (data.virtualFile != null) {
+                    setIcon(data.isDirectory ? AllIcons.Nodes.Folder : data.virtualFile.getFileType().getIcon());
+                } else {
+                    setIcon(data.isDirectory ? AllIcons.Nodes.Folder : AllIcons.FileTypes.Unknown);
+                }
+                if (data.virtualFile == null && !data.isDirectory && !data.displayName.startsWith("Group: ")) {
+                    append(data.displayName, SimpleTextAttributes.ERROR_ATTRIBUTES);
+                    append(" (missing)", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES);
+                } else {
+                    append(data.displayName, SimpleTextAttributes.REGULAR_ATTRIBUTES);
+                }
+            }
+        }
+    }
+}
+"""
+
+def write_file(path, content):
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(content)
+    print(f"Updated: {path}")
+
+# 执行文件写入
+write_file(FILE_PATHS["config_model"], config_model_content)
+write_file(FILE_PATHS["service"], service_content)
+write_file(FILE_PATHS["panel"], panel_content)
+
+print("AICode Context Groups implementation completed.")

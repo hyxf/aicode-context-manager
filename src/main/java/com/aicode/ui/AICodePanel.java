@@ -11,8 +11,10 @@ import com.intellij.notification.NotificationType;
 import com.intellij.notification.Notifications;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.*;
+import com.intellij.openapi.actionSystem.ex.ComboBoxAction;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.SimpleTextAttributes;
@@ -33,7 +35,7 @@ import java.util.*;
 import java.util.List;
 
 /**
- * Panel for AICode Tool Window with Tree View
+ * Panel for AICode Tool Window with Tree View and Context Groups
  */
 public class AICodePanel extends JPanel implements Disposable {
     private final Project project;
@@ -70,13 +72,11 @@ public class AICodePanel extends JPanel implements Disposable {
 
     private void setupUI() {
         // 1. Configure Tree Appearance
-        tree.setRootVisible(true); // Show project root
+        tree.setRootVisible(true);
         tree.setShowsRootHandles(true);
         tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
         tree.setCellRenderer(new AICodeTreeCellRenderer());
-
-        // Empty text
-        tree.getEmptyText().setText("No context files. Right-click files in Project View to add.");
+        tree.getEmptyText().setText("No files in this context group.");
 
         // 2. Scroll Pane
         JBScrollPane scrollPane = new JBScrollPane(tree);
@@ -90,7 +90,11 @@ public class AICodePanel extends JPanel implements Disposable {
     private JComponent createToolbar() {
         DefaultActionGroup actionGroup = new DefaultActionGroup();
 
-        // 1. Open Config
+        // Group Selector
+        actionGroup.add(new GroupSelectorAction());
+        actionGroup.addSeparator();
+
+        // Open Config
         actionGroup.add(new AnAction("Open Configuration", "Open .aicode.json configuration file", AllIcons.General.Settings) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e) {
@@ -98,8 +102,8 @@ public class AICodePanel extends JPanel implements Disposable {
             }
         });
 
-        // 2. Copy as Markdown (NEW)
-        actionGroup.add(new AnAction("Copy as Markdown", "Export all context files as Markdown to clipboard", AllIcons.Actions.Copy) {
+        // Copy as Markdown
+        actionGroup.add(new AnAction("Copy as Markdown", "Export current context group as Markdown", AllIcons.Actions.Copy) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e) {
                 copyMarkdownToClipboard();
@@ -108,39 +112,26 @@ public class AICodePanel extends JPanel implements Disposable {
 
         actionGroup.addSeparator();
 
-        // 3. Expand All / Collapse All
+        // Expand/Collapse
         TreeExpander treeExpander = new TreeExpander() {
             @Override
             public void expandAll() {
                 TreeUtil.expandAll(tree);
             }
-
             @Override
-            public boolean canExpand() {
-                return true;
-            }
-
+            public boolean canExpand() { return true; }
             @Override
             public void collapseAll() {
-                TreeUtil.collapseAll(tree, 1); // Keep root expanded
+                TreeUtil.collapseAll(tree, 1);
             }
-
             @Override
-            public boolean canCollapse() {
-                return true;
-            }
+            public boolean canCollapse() { return true; }
         };
-
         CommonActionsManager actionsManager = CommonActionsManager.getInstance();
-        AnAction expandAllAction = actionsManager.createExpandAllAction(treeExpander, tree);
-        AnAction collapseAllAction = actionsManager.createCollapseAllAction(treeExpander, tree);
-
-        actionGroup.add(expandAllAction);
-        actionGroup.add(collapseAllAction);
+        actionGroup.add(actionsManager.createExpandAllAction(treeExpander, tree));
+        actionGroup.add(actionsManager.createCollapseAllAction(treeExpander, tree));
 
         actionGroup.addSeparator();
-
-        // 4. Refresh
         actionGroup.add(new AnAction("Refresh", "Refresh tree", AllIcons.Actions.Refresh) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e) {
@@ -148,56 +139,126 @@ public class AICodePanel extends JPanel implements Disposable {
             }
         });
 
-        ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar(
-                "AICodeToolbar",
-                actionGroup,
-                true
-        );
+        ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar("AICodeToolbar", actionGroup, true);
         toolbar.setTargetComponent(this);
-
         return toolbar.getComponent();
     }
+
+    // ============================================================
+    // Group Selector Logic
+    // ============================================================
+
+    private class GroupSelectorAction extends ComboBoxAction {
+        @NotNull
+        @Override
+        public JComponent createCustomComponent(@NotNull Presentation presentation, @NotNull String place) {
+            JComponent component = super.createCustomComponent(presentation, place);
+            // Optionally constrain width
+            return component;
+        }
+
+        @Override
+        public void update(@NotNull AnActionEvent e) {
+            Project p = e.getProject();
+            if (p != null) {
+                String activeGroup = AICodeFileService.getInstance(p).getActiveGroupName();
+                e.getPresentation().setText(activeGroup);
+                e.getPresentation().setDescription("Current Context Group: " + activeGroup);
+                e.getPresentation().setIcon(AllIcons.Nodes.ModuleGroup);
+            }
+        }
+
+        @NotNull
+        @Override
+        protected DefaultActionGroup createPopupActionGroup(JComponent button) {
+            DefaultActionGroup group = new DefaultActionGroup();
+            AICodeFileService service = AICodeFileService.getInstance(project);
+            String activeGroup = service.getActiveGroupName();
+            Set<String> allGroups = service.getGroupNames();
+
+            // 1. List existing groups
+            List<String> sortedGroups = new ArrayList<>(allGroups);
+            Collections.sort(sortedGroups);
+
+            for (String groupName : sortedGroups) {
+                boolean isSelected = groupName.equals(activeGroup);
+                group.add(new AnAction(groupName, "Switch to " + groupName, isSelected ? AllIcons.Actions.Checked : null) {
+                    @Override
+                    public void actionPerformed(@NotNull AnActionEvent e) {
+                        service.setActiveGroup(groupName);
+                    }
+                });
+            }
+
+            group.addSeparator();
+
+            // 2. Add New Group
+            group.add(new AnAction("New Group...", "Create a new empty context group", AllIcons.General.Add) {
+                @Override
+                public void actionPerformed(@NotNull AnActionEvent e) {
+                    String name = Messages.showInputDialog(project, "Enter name for new context group:", "New Group", Messages.getQuestionIcon());
+                    if (name != null && !name.trim().isEmpty()) {
+                        service.addGroup(name.trim());
+                    }
+                }
+            });
+
+            // 3. Remove Current Group
+            group.add(new AnAction("Delete Current Group", "Delete the currently active group", AllIcons.General.Remove) {
+                @Override
+                public void actionPerformed(@NotNull AnActionEvent e) {
+                    String current = service.getActiveGroupName();
+                    int result = Messages.showYesNoDialog(project,
+                        "Are you sure you want to delete context group '" + current + "'?",
+                        "Delete Group", Messages.getWarningIcon());
+                    if (result == Messages.YES) {
+                        service.removeGroup(current);
+                    }
+                }
+                @Override
+                public void update(@NotNull AnActionEvent e) {
+                    // Prevent deleting if it's the only one left
+                    e.getPresentation().setEnabled(service.getGroupNames().size() > 1);
+                }
+            });
+
+            return group;
+        }
+    }
+
+    // ============================================================
+    // Other Panel Logic
+    // ============================================================
 
     private void copyMarkdownToClipboard() {
         AICodeFileService service = AICodeFileService.getInstance(project);
         List<String> filePaths = service.readFilePaths();
+        String group = service.getActiveGroupName();
 
         if (filePaths.isEmpty()) {
-            showNotification("No files in AICode context", NotificationType.WARNING);
+            showNotification("Group '" + group + "' is empty.", NotificationType.WARNING);
             return;
         }
 
         try {
-            // Run expensive operation in background (though reading small files is fast)
-            // For simplicity in UI action, direct call is acceptable if files aren't huge.
             String markdown = MarkdownBuilder.buildMarkdown(
                     project,
                     filePaths,
                     service::getFileFromPath
             );
-
             ClipboardService.copyToClipboard(markdown);
-
-            String message = String.format("AICode Markdown copied to clipboard (%d files)", filePaths.size());
-            showNotification(message, NotificationType.INFORMATION);
-
+            showNotification("Copied group '" + group + "' (" + filePaths.size() + " files) to clipboard.", NotificationType.INFORMATION);
         } catch (Exception ex) {
-            showNotification("Failed to export Markdown: " + ex.getMessage(), NotificationType.ERROR);
+            showNotification("Failed to export: " + ex.getMessage(), NotificationType.ERROR);
         }
     }
 
     private void showNotification(String content, NotificationType type) {
-        Notification notification = new Notification(
-                "AICode",
-                "AICode Context Manager",
-                content,
-                type
-        );
+        Notification notification = new Notification("AICode", "AICode Context", content, type);
         Notifications.Bus.notify(notification, project);
     }
 
     private void setupListeners() {
-        // Double-click to open file
         tree.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -211,7 +272,6 @@ public class AICodePanel extends JPanel implements Disposable {
             }
         });
 
-        // Right-click menu
         tree.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -229,18 +289,11 @@ public class AICodePanel extends JPanel implements Disposable {
     private void showContextMenu(MouseEvent e, DefaultMutableTreeNode node) {
         if (node == null || node.getUserObject() == null) return;
         AICodeNodeData data = (AICodeNodeData) node.getUserObject();
-
         JPopupMenu menu = new JPopupMenu();
-
-        // Determine text based on node type
-        String removeText = data.isDirectory ? "Remove Directory from AICode" : "Remove File from AICode";
-
+        String removeText = data.isDirectory ? "Remove Directory from Context" : "Remove File from Context";
         JMenuItem removeItem = new JMenuItem(removeText);
         removeItem.setIcon(AllIcons.Actions.Cancel);
-        removeItem.addActionListener(actionEvent -> {
-            removeNodeContext(node);
-        });
-
+        removeItem.addActionListener(actionEvent -> removeNodeContext(node));
         menu.add(removeItem);
         menu.show(tree, e.getX(), e.getY());
     }
@@ -249,11 +302,8 @@ public class AICodePanel extends JPanel implements Disposable {
         AICodeFileService service = AICodeFileService.getInstance(project);
         List<String> pathsToRemove = new ArrayList<>();
         collectPaths(node, pathsToRemove);
-
-        if (!pathsToRemove.isEmpty()) {
-            for (String path : pathsToRemove) {
-                service.removeFilePath(path);
-            }
+        for (String path : pathsToRemove) {
+            service.removeFilePath(path);
         }
     }
 
@@ -261,13 +311,10 @@ public class AICodePanel extends JPanel implements Disposable {
         Object userObject = node.getUserObject();
         if (userObject instanceof AICodeNodeData) {
             AICodeNodeData data = (AICodeNodeData) userObject;
-            // If it's a leaf (file) and has a valid path, add it
             if (!data.isDirectory && data.fullRelativePath != null) {
                 collector.add(data.fullRelativePath);
             }
         }
-
-        // Recursively check children
         for (int i = 0; i < node.getChildCount(); i++) {
             collectPaths((DefaultMutableTreeNode) node.getChildAt(i), collector);
         }
@@ -284,65 +331,49 @@ public class AICodePanel extends JPanel implements Disposable {
     }
 
     public void refreshTree() {
-        // Run on EDT
         SwingUtilities.invokeLater(() -> {
             rootNode.removeAllChildren();
-
             AICodeFileService service = AICodeFileService.getInstance(project);
-            List<String> paths = service.readFilePaths();
-            Collections.sort(paths); // Sort to ensure folders come in order
 
-            // Update Root Display
+            // Update Root Display with Group Name
             AICodeNodeData rootData = (AICodeNodeData) rootNode.getUserObject();
-            rootData.displayName = project.getName();
+            String groupName = service.getActiveGroupName();
+            rootData.displayName = "Group: " + groupName;
             rootData.virtualFile = project.getBaseDir();
 
+            List<String> paths = service.readFilePaths();
+            Collections.sort(paths);
             buildTreeStructure(paths, service);
-
             treeModel.reload();
-            TreeUtil.expandAll(tree); // Auto expand all on refresh
+            TreeUtil.expandAll(tree);
         });
     }
 
-    /**
-     * Reconstruct the tree from flat paths
-     */
     private void buildTreeStructure(List<String> paths, AICodeFileService service) {
         Map<String, DefaultMutableTreeNode> directoryNodes = new HashMap<>();
-
         for (String path : paths) {
             String[] parts = path.split("/");
             DefaultMutableTreeNode currentNode = rootNode;
             String currentPathAccumulator = "";
-
             for (int i = 0; i < parts.length; i++) {
                 String part = parts[i];
                 boolean isLast = (i == parts.length - 1);
-
-                if (!currentPathAccumulator.isEmpty()) {
-                    currentPathAccumulator += "/";
-                }
+                if (!currentPathAccumulator.isEmpty()) currentPathAccumulator += "/";
                 currentPathAccumulator += part;
 
                 if (isLast) {
-                    // It's the file itself
                     VirtualFile file = service.getFileFromPath(path);
                     AICodeNodeData fileData = new AICodeNodeData(part, path, false);
                     fileData.virtualFile = file;
-
-                    DefaultMutableTreeNode fileNode = new DefaultMutableTreeNode(fileData);
-                    currentNode.add(fileNode);
+                    currentNode.add(new DefaultMutableTreeNode(fileData));
                 } else {
-                    // It's a directory
                     String dirPath = currentPathAccumulator;
-
                     if (directoryNodes.containsKey(dirPath)) {
                         currentNode = directoryNodes.get(dirPath);
                     } else {
                         VirtualFile dirFile = service.getFileFromPath(dirPath);
                         AICodeNodeData dirData = new AICodeNodeData(part, dirPath, true);
                         dirData.virtualFile = dirFile;
-
                         DefaultMutableTreeNode dirNode = new DefaultMutableTreeNode(dirData);
                         directoryNodes.put(dirPath, dirNode);
                         currentNode.add(dirNode);
@@ -362,64 +393,37 @@ public class AICodePanel extends JPanel implements Disposable {
     }
 
     @Override
-    public void dispose() {
-        // Required by Disposable interface
-    }
+    public void dispose() {}
 
-    /**
-     * Data holder for Tree Nodes
-     */
     private static class AICodeNodeData {
         String displayName;
         String fullRelativePath;
         boolean isDirectory;
         VirtualFile virtualFile;
-
         public AICodeNodeData(String displayName, String fullRelativePath, boolean isDirectory) {
             this.displayName = displayName;
             this.fullRelativePath = fullRelativePath;
             this.isDirectory = isDirectory;
         }
-
-        @Override
-        public String toString() {
-            return displayName;
-        }
+        @Override public String toString() { return displayName; }
     }
 
-    /**
-     * Custom Renderer to mimic Project View
-     */
     private static class AICodeTreeCellRenderer extends ColoredTreeCellRenderer {
         @Override
-        public void customizeCellRenderer(@NotNull JTree tree,
-                                          Object value,
-                                          boolean selected,
-                                          boolean expanded,
-                                          boolean leaf,
-                                          int row,
-                                          boolean hasFocus) {
+        public void customizeCellRenderer(@NotNull JTree tree, Object value, boolean selected, boolean expanded, boolean leaf, int row, boolean hasFocus) {
             if (!(value instanceof DefaultMutableTreeNode)) return;
-
             DefaultMutableTreeNode node = (DefaultMutableTreeNode) value;
             Object userObject = node.getUserObject();
-
             if (userObject instanceof AICodeNodeData) {
                 AICodeNodeData data = (AICodeNodeData) userObject;
-
-                // Icon
-                if (data.virtualFile != null) {
-                    if (data.isDirectory) {
-                        setIcon(AllIcons.Nodes.Folder);
-                    } else {
-                        setIcon(data.virtualFile.getFileType().getIcon());
-                    }
+                if (data.displayName.startsWith("Group: ")) {
+                    setIcon(AllIcons.Nodes.ModuleGroup);
+                } else if (data.virtualFile != null) {
+                    setIcon(data.isDirectory ? AllIcons.Nodes.Folder : data.virtualFile.getFileType().getIcon());
                 } else {
                     setIcon(data.isDirectory ? AllIcons.Nodes.Folder : AllIcons.FileTypes.Unknown);
                 }
-
-                // Text
-                if (data.virtualFile == null && !data.displayName.equals("Project")) {
+                if (data.virtualFile == null && !data.isDirectory && !data.displayName.startsWith("Group: ")) {
                     append(data.displayName, SimpleTextAttributes.ERROR_ATTRIBUTES);
                     append(" (missing)", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES);
                 } else {
