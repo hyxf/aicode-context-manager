@@ -15,40 +15,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ 检出代码
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2️⃣ Java
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '17'
+          distribution: zulu
+          java-version: 17
 
-      # 3️⃣ 解析版本号
       - name: Extract Version
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
           VERSION=${TAG_NAME#v}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-      # 4️⃣ Gradle（带缓存）
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # 5️⃣ 构建插件
       - name: Build Plugin
         run: ./gradlew buildPlugin -PpluginVersion=${{ env.VERSION }}
 
-      # 6️⃣ 统一 ZIP 名称（防未来 Gradle 改名导致更新源失效）
       - name: Normalize ZIP name
         run: |
           mkdir release
           FILE=$(ls build/distributions/*.zip | head -n 1)
           cp "$FILE" release/plugin.zip
 
-      # 7️⃣ 创建 GitHub Release（附件名稳定）
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -58,36 +51,34 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 8️⃣ 生成 updatePlugins.xml（始终指向稳定文件名）
+      # ✅ 安全生成 XML（不会触发 YAML 语法错误）
       - name: Generate updatePlugins.xml
         run: |
           mkdir site
           REPO=${{ github.repository }}
           URL="https://github.com/$REPO/releases/download/v${{ env.VERSION }}/plugin.zip"
 
-          cat > site/updatePlugins.xml <<EOF
-  <plugins>
-  <plugin id="com.github.hyxf.aicode-context-manager"
-  url="$URL"
-  version="${{ env.VERSION }}">
-  <name>AICode Context Manager</name>
-  <vendor>hyxf</vendor>
-  <description>AI Context Manager</description>
-  </plugin>
-  </plugins>
-  EOF
+          printf '%s\n' \
+          '<plugins>' \
+          '  <plugin id="com.yourcompany.plugin"' \
+          "          url=\"$URL\"" \
+          "          version=\"${{ env.VERSION }}\">" \
+          '    <name>Your Plugin</name>' \
+          '    <vendor>Your Company</vendor>' \
+          '    <description>Internal IDEA Plugin</description>' \
+          '  </plugin>' \
+          '</plugins>' > site/updatePlugins.xml
 
-# 9️⃣ 上传 Pages 文件
-- name: Upload Pages Artifact
-  uses: actions/upload-pages-artifact@v3
-  with:
-    path: site
-    if-no-files-found: error
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+          if-no-files-found: error
 
-deploy-pages:
-  needs: release
-  runs-on: ubuntu-latest
-  environment:
-    name: github-pages
-  steps:
-    - uses: actions/deploy-pages@v4
+  deploy-pages:
+    needs: release
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    steps:
+      - uses: actions/deploy-pages@v4
