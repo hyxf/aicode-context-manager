@@ -53,12 +53,16 @@
                     class="com.aicode.action.AddToAICodeAction"
                     text="Add to AICode"
                     description="Add file to AICode context">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift Z"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift Z"/>
             </action>
 
             <action id="com.aicode.action.RemoveFromAICodeAction"
                     class="com.aicode.action.RemoveFromAICodeAction"
                     text="Remove from AICode"
                     description="Remove file from AICode context">
+                <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift X"/>
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift X"/>
             </action>
 
             <action id="com.aicode.action.CopyMarkdownAction"
