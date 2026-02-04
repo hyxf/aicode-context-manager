@@ -2,462 +2,129 @@ import os
 
 # 定义文件路径
 FILE_PATHS = {
-    "panel": os.path.join("src", "main", "java", "com", "aicode", "ui", "AICodePanel.java")
+    "icons_class": os.path.join("src", "main", "java", "com", "aicode", "icons", "AICodeIcons.java"),
+    "provider_class": os.path.join("src", "main", "java", "com", "aicode", "provider", "AICodeIconProvider.java"),
+    "plugin_xml": os.path.join("src", "main", "resources", "META-INF", "plugin.xml")
 }
 
-# 1. AICodePanel.java
-# 更新: 重名校验改为 Notification 通知
+# 1. 新增 AICodeIcons.java
 # ------------------------------------------------------------------
-panel_content = """package com.aicode.ui;
+icons_class_content = """package com.aicode.icons;
 
-import com.aicode.service.AICodeFileService;
-import com.aicode.util.ClipboardService;
-import com.aicode.util.MarkdownBuilder;
-import com.intellij.icons.AllIcons;
-import com.intellij.ide.CommonActionsManager;
-import com.intellij.ide.TreeExpander;
-import com.intellij.notification.Notification;
-import com.intellij.notification.NotificationType;
-import com.intellij.notification.Notifications;
-import com.intellij.openapi.Disposable;
-import com.intellij.openapi.actionSystem.*;
-import com.intellij.openapi.actionSystem.ex.ComboBoxAction;
-import com.intellij.openapi.fileEditor.FileEditorManager;
-import com.intellij.openapi.project.Project;
-import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.ui.ColoredTreeCellRenderer;
-import com.intellij.ui.SimpleTextAttributes;
-import com.intellij.ui.components.JBScrollPane;
-import com.intellij.ui.treeStructure.Tree;
-import com.intellij.util.ui.tree.TreeUtil;
-import org.jetbrains.annotations.NotNull;
+import com.intellij.openapi.util.IconLoader;
 
 import javax.swing.*;
-import javax.swing.tree.DefaultMutableTreeNode;
-import javax.swing.tree.DefaultTreeModel;
-import javax.swing.tree.TreePath;
-import javax.swing.tree.TreeSelectionModel;
-import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.util.*;
-import java.util.List;
 
-/**
- * Panel for AICode Tool Window with Tree View and Context Groups
- */
-public class AICodePanel extends JPanel implements Disposable {
-    private final Project project;
-    private final Tree tree;
-    private final DefaultTreeModel treeModel;
-    private final DefaultMutableTreeNode rootNode;
+public class AICodeIcons {
+    public static final Icon LOGO = IconLoader.getIcon("/icons/aicode.svg", AICodeIcons.class);
+}
+"""
 
-    public AICodePanel(@NotNull Project project) {
-        this.project = project;
-        this.rootNode = new DefaultMutableTreeNode(new AICodeNodeData("Project", null, true));
-        this.treeModel = new DefaultTreeModel(rootNode);
-        this.tree = new Tree(treeModel);
+# 2. 新增 AICodeIconProvider.java
+# ------------------------------------------------------------------
+provider_class_content = """package com.aicode.provider;
 
-        setLayout(new BorderLayout());
-        setupUI();
-        setupListeners();
-        refreshTree();
+import com.aicode.icons.AICodeIcons;
+import com.intellij.ide.IconProvider;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
-        project.getMessageBus().connect(this).subscribe(
-                AICodeFileService.AICODE_TOPIC,
-                new AICodeFileService.AICodeStateListener() {
-                    @Override
-                    public void onContextChanged() {
-                        refreshTree();
-                    }
-                }
-        );
-    }
+import javax.swing.*;
 
-    private void setupUI() {
-        tree.setRootVisible(true);
-        tree.setShowsRootHandles(true);
-        tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
-        tree.setCellRenderer(new AICodeTreeCellRenderer());
-        tree.getEmptyText().setText("No files in this context group.");
-
-        JBScrollPane scrollPane = new JBScrollPane(tree);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder());
-        add(scrollPane, BorderLayout.CENTER);
-
-        add(createToolbar(), BorderLayout.NORTH);
-    }
-
-    private JComponent createToolbar() {
-        DefaultActionGroup actionGroup = new DefaultActionGroup();
-
-        actionGroup.add(new GroupSelectorAction());
-        actionGroup.addSeparator();
-
-        actionGroup.add(new AnAction("Open Configuration", "Open .aicode.json configuration file", AllIcons.General.Settings) {
-            @Override
-            public void actionPerformed(@NotNull AnActionEvent e) {
-                openAICodeFile();
-            }
-        });
-
-        actionGroup.add(new AnAction("Copy as Markdown", "Export current context group as Markdown", AllIcons.Actions.Copy) {
-            @Override
-            public void actionPerformed(@NotNull AnActionEvent e) {
-                copyMarkdownToClipboard();
-            }
-        });
-
-        actionGroup.addSeparator();
-
-        TreeExpander treeExpander = new TreeExpander() {
-            @Override public void expandAll() { TreeUtil.expandAll(tree); }
-            @Override public boolean canExpand() { return true; }
-            @Override public void collapseAll() { TreeUtil.collapseAll(tree, 1); }
-            @Override public boolean canCollapse() { return true; }
-        };
-        CommonActionsManager actionsManager = CommonActionsManager.getInstance();
-        actionGroup.add(actionsManager.createExpandAllAction(treeExpander, tree));
-        actionGroup.add(actionsManager.createCollapseAllAction(treeExpander, tree));
-
-        actionGroup.addSeparator();
-        actionGroup.add(new AnAction("Refresh", "Refresh tree", AllIcons.Actions.Refresh) {
-            @Override
-            public void actionPerformed(@NotNull AnActionEvent e) {
-                refreshTree();
-            }
-        });
-
-        ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar("AICodeToolbar", actionGroup, true);
-        toolbar.setTargetComponent(this);
-        return toolbar.getComponent();
-    }
-
-    // ============================================================
-    // Group Selector Logic
-    // ============================================================
-
-    private class GroupSelectorAction extends ComboBoxAction {
-        @Override
-        public void update(@NotNull AnActionEvent e) {
-            Project p = e.getProject();
-            if (p != null) {
-                String activeGroup = AICodeFileService.getInstance(p).getActiveGroupName();
-                e.getPresentation().setText(activeGroup);
-                e.getPresentation().setDescription("Current Context Group: " + activeGroup);
-                e.getPresentation().setIcon(AllIcons.Nodes.ModuleGroup);
-            }
-        }
-
-        @NotNull
-        @Override
-        protected DefaultActionGroup createPopupActionGroup(JComponent button) {
-            DefaultActionGroup group = new DefaultActionGroup();
-            AICodeFileService service = AICodeFileService.getInstance(project);
-            String activeGroup = service.getActiveGroupName();
-            Set<String> allGroups = service.getGroupNames();
-
-            List<String> sortedGroups = new ArrayList<>(allGroups);
-            Collections.sort(sortedGroups);
-
-            // 1. Switch Group
-            for (String groupName : sortedGroups) {
-                boolean isSelected = groupName.equals(activeGroup);
-                group.add(new AnAction(groupName, "Switch to " + groupName, isSelected ? AllIcons.Actions.Checked : null) {
-                    @Override
-                    public void actionPerformed(@NotNull AnActionEvent e) {
-                        service.setActiveGroup(groupName);
-                    }
-                });
-            }
-
-            group.addSeparator();
-
-            // 2. New Group (Validation -> Notification)
-            group.add(new AnAction("New Group...", "Create a new empty context group", AllIcons.General.Add) {
-                @Override
-                public void actionPerformed(@NotNull AnActionEvent e) {
-                    String name = Messages.showInputDialog(project,
-                        "Enter name for new context group:",
-                        "New Group",
-                        null);
-
-                    if (name != null && !name.trim().isEmpty()) {
-                        String trimmedName = name.trim();
-                        if (service.getGroupNames().contains(trimmedName)) {
-                            showNotification("Group '" + trimmedName + "' already exists.", NotificationType.ERROR);
-                        } else {
-                            service.addGroup(trimmedName);
-                        }
-                    }
-                }
-            });
-
-            // 3. Rename Group (Validation -> Notification)
-            group.add(new AnAction("Rename Current Group...", "Rename the currently active group", AllIcons.Actions.Edit) {
-                @Override
-                public void actionPerformed(@NotNull AnActionEvent e) {
-                    String current = service.getActiveGroupName();
-                    String newName = Messages.showInputDialog(project,
-                        "Rename group '" + current + "' to:",
-                        "Rename Group",
-                        null,
-                        current,
-                        null);
-
-                    if (newName != null && !newName.trim().isEmpty() && !newName.equals(current)) {
-                        String trimmedName = newName.trim();
-                        if (service.getGroupNames().contains(trimmedName)) {
-                            showNotification("Group '" + trimmedName + "' already exists.", NotificationType.ERROR);
-                        } else {
-                            service.renameGroup(current, trimmedName);
-                        }
-                    }
-                }
-            });
-
-            // 4. Duplicate Group (Validation -> Notification)
-            group.add(new AnAction("Duplicate Current Group...", "Create a copy of the current group", AllIcons.Actions.Copy) {
-                @Override
-                public void actionPerformed(@NotNull AnActionEvent e) {
-                    String current = service.getActiveGroupName();
-                    String newName = Messages.showInputDialog(project,
-                            "Enter name for the new group copy:",
-                            "Duplicate Group",
-                            null,
-                            current + " Copy",
-                            null);
-
-                    if (newName != null && !newName.trim().isEmpty()) {
-                        String trimmedName = newName.trim();
-                        if (service.getGroupNames().contains(trimmedName)) {
-                            showNotification("Group '" + trimmedName + "' already exists.", NotificationType.ERROR);
-                        } else {
-                            service.duplicateGroup(current, trimmedName);
-                        }
-                    }
-                }
-            });
-
-            // 5. Delete Group
-            group.add(new AnAction("Delete Current Group", "Delete the currently active group", AllIcons.General.Remove) {
-                @Override
-                public void actionPerformed(@NotNull AnActionEvent e) {
-                    String current = service.getActiveGroupName();
-                    int result = Messages.showYesNoDialog(project,
-                        "Are you sure you want to delete context group '" + current + "'?",
-                        "Delete Group", Messages.getWarningIcon());
-                    if (result == Messages.YES) {
-                        service.removeGroup(current);
-                    }
-                }
-                @Override
-                public void update(@NotNull AnActionEvent e) {
-                    e.getPresentation().setEnabled(service.getGroupNames().size() > 1);
-                }
-            });
-
-            return group;
-        }
-    }
-
-    private void copyMarkdownToClipboard() {
-        AICodeFileService service = AICodeFileService.getInstance(project);
-        List<String> filePaths = service.readFilePaths();
-        String group = service.getActiveGroupName();
-
-        if (filePaths.isEmpty()) {
-            showNotification("Group '" + group + "' is empty.", NotificationType.WARNING);
-            return;
-        }
-
-        try {
-            String markdown = MarkdownBuilder.buildMarkdown(project, filePaths, service::getFileFromPath);
-            ClipboardService.copyToClipboard(markdown);
-            showNotification("Copied group '" + group + "' (" + filePaths.size() + " files) to clipboard.", NotificationType.INFORMATION);
-        } catch (Exception ex) {
-            showNotification("Failed to export: " + ex.getMessage(), NotificationType.ERROR);
-        }
-    }
-
-    private void showNotification(String content, NotificationType type) {
-        Notification notification = new Notification("AICode", "AICode Context", content, type);
-        Notifications.Bus.notify(notification, project);
-    }
-
-    private void setupListeners() {
-        tree.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) {
-                    TreePath path = tree.getPathForLocation(e.getX(), e.getY());
-                    if (path != null) {
-                        DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
-                        openFileFromNode(node);
-                    }
-                }
-            }
-        });
-        tree.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mousePressed(MouseEvent e) {
-                if (SwingUtilities.isRightMouseButton(e)) {
-                    TreePath path = tree.getPathForLocation(e.getX(), e.getY());
-                    if (path != null) {
-                        tree.setSelectionPath(path);
-                        showContextMenu(e, (DefaultMutableTreeNode) path.getLastPathComponent());
-                    }
-                }
-            }
-        });
-    }
-
-    private void showContextMenu(MouseEvent e, DefaultMutableTreeNode node) {
-        if (node == null || node.getUserObject() == null) return;
-        AICodeNodeData data = (AICodeNodeData) node.getUserObject();
-        JPopupMenu menu = new JPopupMenu();
-        String removeText = data.isDirectory ? "Remove Directory from Context" : "Remove File from Context";
-        JMenuItem removeItem = new JMenuItem(removeText);
-        removeItem.setIcon(AllIcons.Actions.Cancel);
-        removeItem.addActionListener(actionEvent -> removeNodeContext(node));
-        menu.add(removeItem);
-        menu.show(tree, e.getX(), e.getY());
-    }
-
-    private void removeNodeContext(DefaultMutableTreeNode node) {
-        AICodeFileService service = AICodeFileService.getInstance(project);
-        List<String> pathsToRemove = new ArrayList<>();
-        collectPaths(node, pathsToRemove);
-        for (String path : pathsToRemove) {
-            service.removeFilePath(path);
-        }
-    }
-
-    private void collectPaths(DefaultMutableTreeNode node, List<String> collector) {
-        Object userObject = node.getUserObject();
-        if (userObject instanceof AICodeNodeData) {
-            AICodeNodeData data = (AICodeNodeData) userObject;
-            if (!data.isDirectory && data.fullRelativePath != null) {
-                collector.add(data.fullRelativePath);
-            }
-        }
-        for (int i = 0; i < node.getChildCount(); i++) {
-            collectPaths((DefaultMutableTreeNode) node.getChildAt(i), collector);
-        }
-    }
-
-    private void openFileFromNode(DefaultMutableTreeNode node) {
-        Object userObject = node.getUserObject();
-        if (userObject instanceof AICodeNodeData) {
-            AICodeNodeData data = (AICodeNodeData) userObject;
-            if (!data.isDirectory && data.virtualFile != null) {
-                FileEditorManager.getInstance(project).openFile(data.virtualFile, true);
-            }
-        }
-    }
-
-    public void refreshTree() {
-        SwingUtilities.invokeLater(() -> {
-            rootNode.removeAllChildren();
-            AICodeFileService service = AICodeFileService.getInstance(project);
-            AICodeNodeData rootData = (AICodeNodeData) rootNode.getUserObject();
-            String groupName = service.getActiveGroupName();
-            rootData.displayName = "Group: " + groupName;
-            rootData.virtualFile = project.getBaseDir();
-
-            List<String> paths = service.readFilePaths();
-            Collections.sort(paths);
-            buildTreeStructure(paths, service);
-            treeModel.reload();
-            TreeUtil.expandAll(tree);
-        });
-    }
-
-    private void buildTreeStructure(List<String> paths, AICodeFileService service) {
-        Map<String, DefaultMutableTreeNode> directoryNodes = new HashMap<>();
-        for (String path : paths) {
-            String[] parts = path.split("/");
-            DefaultMutableTreeNode currentNode = rootNode;
-            String currentPathAccumulator = "";
-            for (int i = 0; i < parts.length; i++) {
-                String part = parts[i];
-                boolean isLast = (i == parts.length - 1);
-                if (!currentPathAccumulator.isEmpty()) currentPathAccumulator += "/";
-                currentPathAccumulator += part;
-
-                if (isLast) {
-                    VirtualFile file = service.getFileFromPath(path);
-                    AICodeNodeData fileData = new AICodeNodeData(part, path, false);
-                    fileData.virtualFile = file;
-                    currentNode.add(new DefaultMutableTreeNode(fileData));
-                } else {
-                    String dirPath = currentPathAccumulator;
-                    if (directoryNodes.containsKey(dirPath)) {
-                        currentNode = directoryNodes.get(dirPath);
-                    } else {
-                        VirtualFile dirFile = service.getFileFromPath(dirPath);
-                        AICodeNodeData dirData = new AICodeNodeData(part, dirPath, true);
-                        dirData.virtualFile = dirFile;
-                        DefaultMutableTreeNode dirNode = new DefaultMutableTreeNode(dirData);
-                        directoryNodes.put(dirPath, dirNode);
-                        currentNode.add(dirNode);
-                        currentNode = dirNode;
-                    }
-                }
-            }
-        }
-    }
-
-    private void openAICodeFile() {
-        AICodeFileService service = AICodeFileService.getInstance(project);
-        VirtualFile aiCodeFile = service.getOrCreateAICodeFile();
-        if (aiCodeFile != null) {
-            FileEditorManager.getInstance(project).openFile(aiCodeFile, true);
-        }
-    }
-
+public class AICodeIconProvider extends IconProvider {
     @Override
-    public void dispose() {}
-
-    private static class AICodeNodeData {
-        String displayName;
-        String fullRelativePath;
-        boolean isDirectory;
-        VirtualFile virtualFile;
-        public AICodeNodeData(String displayName, String fullRelativePath, boolean isDirectory) {
-            this.displayName = displayName;
-            this.fullRelativePath = fullRelativePath;
-            this.isDirectory = isDirectory;
-        }
-        @Override public String toString() { return displayName; }
-    }
-
-    private static class AICodeTreeCellRenderer extends ColoredTreeCellRenderer {
-        @Override
-        public void customizeCellRenderer(@NotNull JTree tree, Object value, boolean selected, boolean expanded, boolean leaf, int row, boolean hasFocus) {
-            if (!(value instanceof DefaultMutableTreeNode)) return;
-            DefaultMutableTreeNode node = (DefaultMutableTreeNode) value;
-            Object userObject = node.getUserObject();
-            if (userObject instanceof AICodeNodeData) {
-                AICodeNodeData data = (AICodeNodeData) userObject;
-                if (data.displayName.startsWith("Group: ")) {
-                    setIcon(AllIcons.Nodes.ModuleGroup);
-                } else if (data.virtualFile != null) {
-                    setIcon(data.isDirectory ? AllIcons.Nodes.Folder : data.virtualFile.getFileType().getIcon());
-                } else {
-                    setIcon(data.isDirectory ? AllIcons.Nodes.Folder : AllIcons.FileTypes.Unknown);
-                }
-                if (data.virtualFile == null && !data.isDirectory && !data.displayName.startsWith("Group: ")) {
-                    append(data.displayName, SimpleTextAttributes.ERROR_ATTRIBUTES);
-                    append(" (missing)", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES);
-                } else {
-                    append(data.displayName, SimpleTextAttributes.REGULAR_ATTRIBUTES);
-                }
+    public @Nullable Icon getIcon(@NotNull PsiElement element, int flags) {
+        if (element instanceof PsiFile) {
+            PsiFile psiFile = (PsiFile) element;
+            if (".aicode.json".equals(psiFile.getName())) {
+                return AICodeIcons.LOGO;
             }
         }
+        return null;
     }
 }
+"""
+
+# 3. 更新 plugin.xml
+# ------------------------------------------------------------------
+plugin_xml_content = """<idea-plugin>
+    <id>com.github.hyxf.aicode-context-manager</id>
+    <name>AICode Context Manager</name>
+    <vendor email="xchao887@gmail.com" url="https://github.com/hyxf/aicode-context-manager">AICode</vendor>
+
+    <description><![CDATA[
+    <h2>AICode Context Manager</h2>
+    <p>Manage code context files for AI assistance with one-click Markdown export.</p>
+    <br/>
+    <h3>Features:</h3>
+    <ul>
+      <li>Add/Remove files to AI context via right-click menu</li>
+      <li>Visualize context files in Tool Window</li>
+      <li>Support multi-module projects</li>
+      <li>Auto-sync file changes (rename, move, delete)</li>
+      <li>Export all context files as Markdown code package</li>
+      <li>Multiple Context Groups support</li>
+    </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <notificationGroup
+                id="AICode"
+                displayType="BALLOON"
+                isLogByDefault="true"/>
+
+        <!-- Tool Window -->
+        <toolWindow
+                id="AICode Context"
+                anchor="right"
+                icon="/icons/aicode.svg"
+                factoryClass="com.aicode.ui.AICodeToolWindowFactory"/>
+
+        <!-- Project Service -->
+        <projectService
+                serviceImplementation="com.aicode.service.AICodeFileService"/>
+
+        <!-- Icon Provider -->
+        <iconProvider implementation="com.aicode.provider.AICodeIconProvider"/>
+    </extensions>
+
+    <actions>
+        <group id="AICodeGroup" text="AICode" popup="true">
+            <!-- 1. Project View: Keep in CutCopyPaste group at the bottom -->
+            <add-to-group group-id="CutCopyPasteGroup" anchor="last"/>
+
+            <!-- 2. Editor Tab: Force to FIRST position (Top of the menu) -->
+            <add-to-group group-id="EditorTabPopupMenu" anchor="first"/>
+
+            <action id="com.aicode.action.AddToAICodeAction"
+                    class="com.aicode.action.AddToAICodeAction"
+                    text="Add to AICode"
+                    description="Add file to AICode context">
+            </action>
+
+            <action id="com.aicode.action.RemoveFromAICodeAction"
+                    class="com.aicode.action.RemoveFromAICodeAction"
+                    text="Remove from AICode"
+                    description="Remove file from AICode context">
+            </action>
+
+            <action id="com.aicode.action.CopyMarkdownAction"
+                    class="com.aicode.action.CopyMarkdownAction"
+                    text="Copy as Markdown"
+                    description="Export AICode context as Markdown">
+            </action>
+        </group>
+    </actions>
+
+    <projectListeners>
+        <listener class="com.aicode.listener.AICodeFileListener"
+                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
+    </projectListeners>
+</idea-plugin>
 """
 
 def write_file(path, content):
@@ -467,6 +134,8 @@ def write_file(path, content):
     print(f"Updated: {path}")
 
 # 执行文件写入
-write_file(FILE_PATHS["panel"], panel_content)
+write_file(FILE_PATHS["icons_class"], icons_class_content)
+write_file(FILE_PATHS["provider_class"], provider_class_content)
+write_file(FILE_PATHS["plugin_xml"], plugin_xml_content)
 
-print("AICode Duplicate Name Validation updated (Using Notifications).")
+print("AICode Custom Icon Provider implementation completed.")

@@ -14,6 +14,7 @@
       <li>Support multi-module projects</li>
       <li>Auto-sync file changes (rename, move, delete)</li>
       <li>Export all context files as Markdown code package</li>
+      <li>Multiple Context Groups support</li>
     </ul>
     ]]></description>
 
@@ -24,6 +25,7 @@
                 id="AICode"
                 displayType="BALLOON"
                 isLogByDefault="true"/>
+
         <!-- Tool Window -->
         <toolWindow
                 id="AICode Context"
@@ -34,6 +36,9 @@
         <!-- Project Service -->
         <projectService
                 serviceImplementation="com.aicode.service.AICodeFileService"/>
+
+        <!-- Icon Provider -->
+        <iconProvider implementation="com.aicode.provider.AICodeIconProvider"/>
     </extensions>
 
     <actions>
@@ -42,7 +47,6 @@
             <add-to-group group-id="CutCopyPasteGroup" anchor="last"/>
 
             <!-- 2. Editor Tab: Force to FIRST position (Top of the menu) -->
-            <!-- This guarantees it appears above 'Close' which is usually the first standard item -->
             <add-to-group group-id="EditorTabPopupMenu" anchor="first"/>
 
             <action id="com.aicode.action.AddToAICodeAction"
