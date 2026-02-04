@@ -164,7 +164,7 @@ public class AICodePanel extends JPanel implements Disposable {
 
             group.addSeparator();
 
-            // 2. New Group
+            // 2. New Group (Validation -> Notification)
             group.add(new AnAction("New Group...", "Create a new empty context group", AllIcons.General.Add) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
@@ -172,13 +172,19 @@ public class AICodePanel extends JPanel implements Disposable {
                         "Enter name for new context group:",
                         "New Group",
                         null);
+
                     if (name != null && !name.trim().isEmpty()) {
-                        service.addGroup(name.trim());
+                        String trimmedName = name.trim();
+                        if (service.getGroupNames().contains(trimmedName)) {
+                            showNotification("Group '" + trimmedName + "' already exists.", NotificationType.ERROR);
+                        } else {
+                            service.addGroup(trimmedName);
+                        }
                     }
                 }
             });
 
-            // 3. Rename Group
+            // 3. Rename Group (Validation -> Notification)
             group.add(new AnAction("Rename Current Group...", "Rename the currently active group", AllIcons.Actions.Edit) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
@@ -191,16 +197,17 @@ public class AICodePanel extends JPanel implements Disposable {
                         null);
 
                     if (newName != null && !newName.trim().isEmpty() && !newName.equals(current)) {
-                        if (service.getGroupNames().contains(newName)) {
-                            Messages.showErrorDialog(project, "Group '" + newName + "' already exists.", "Rename Error");
+                        String trimmedName = newName.trim();
+                        if (service.getGroupNames().contains(trimmedName)) {
+                            showNotification("Group '" + trimmedName + "' already exists.", NotificationType.ERROR);
                         } else {
-                            service.renameGroup(current, newName.trim());
+                            service.renameGroup(current, trimmedName);
                         }
                     }
                 }
             });
 
-            // 4. Duplicate Group
+            // 4. Duplicate Group (Validation -> Notification)
             group.add(new AnAction("Duplicate Current Group...", "Create a copy of the current group", AllIcons.Actions.Copy) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
@@ -213,11 +220,11 @@ public class AICodePanel extends JPanel implements Disposable {
                             null);
 
                     if (newName != null && !newName.trim().isEmpty()) {
-                        newName = newName.trim();
-                        if (service.getGroupNames().contains(newName)) {
-                            Messages.showErrorDialog(project, "Group '" + newName + "' already exists.", "Duplicate Error");
+                        String trimmedName = newName.trim();
+                        if (service.getGroupNames().contains(trimmedName)) {
+                            showNotification("Group '" + trimmedName + "' already exists.", NotificationType.ERROR);
                         } else {
-                            service.duplicateGroup(current, newName);
+                            service.duplicateGroup(current, trimmedName);
                         }
                     }
                 }
