@@ -42,7 +42,7 @@
     </extensions>
 
     <actions>
-        <group id="AICodeGroup" text="AICode" popup="true">
+        <group id="AICodeGroup" text="AICode" popup="true" icon="icons/aicode.svg">
             <!-- 1. Project View: Keep in CutCopyPaste group at the bottom -->
             <add-to-group group-id="CutCopyPasteGroup" anchor="last"/>
 
@@ -64,7 +64,8 @@
             <action id="com.aicode.action.CopyMarkdownAction"
                     class="com.aicode.action.CopyMarkdownAction"
                     text="Copy as Markdown"
-                    description="Export AICode context as Markdown">
+                    description="Export AICode context as Markdown"
+                    use-shortcut-of="EditorCopy">
             </action>
         </group>
     </actions>
