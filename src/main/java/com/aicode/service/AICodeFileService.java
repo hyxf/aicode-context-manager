@@ -117,6 +117,10 @@ public class AICodeFileService {
         });
     }
 
+    // ============================================================
+    // Context Group Management
+    // ============================================================
+
     public String getActiveGroupName() {
         return readConfig().getActiveGroup();
     }
@@ -138,6 +142,22 @@ public class AICodeFileService {
         if (!config.getGroups().containsKey(groupName)) {
             config.getGroups().put(groupName, new ArrayList<>());
             config.setActiveGroup(groupName);
+            saveConfig(config);
+        }
+    }
+
+    public void duplicateGroup(String sourceGroupName, String newGroupName) {
+        if (sourceGroupName == null || newGroupName == null || sourceGroupName.equals(newGroupName)) return;
+
+        AICodeConfig config = readConfig();
+        Map<String, List<String>> groups = config.getGroups();
+
+        if (groups.containsKey(sourceGroupName) && !groups.containsKey(newGroupName)) {
+            List<String> sourcePaths = groups.get(sourceGroupName);
+            // Deep copy the list
+            List<String> newPaths = new ArrayList<>(sourcePaths);
+            groups.put(newGroupName, newPaths);
+            config.setActiveGroup(newGroupName); // Auto switch to new copy
             saveConfig(config);
         }
     }
@@ -172,6 +192,10 @@ public class AICodeFileService {
         }
         saveConfig(config);
     }
+
+    // ============================================================
+    // File Path Management (Operates on ACTIVE Group)
+    // ============================================================
 
     @NotNull
     public List<String> readFilePaths() {

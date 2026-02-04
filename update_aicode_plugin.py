@@ -2,68 +2,12 @@ import os
 
 # 定义文件路径
 FILE_PATHS = {
-    "config_model": os.path.join("src", "main", "java", "com", "aicode", "model", "AICodeConfig.java"),
     "service": os.path.join("src", "main", "java", "com", "aicode", "service", "AICodeFileService.java"),
     "panel": os.path.join("src", "main", "java", "com", "aicode", "ui", "AICodePanel.java")
 }
 
-# 1. AICodeConfig.java (保持不变: LinkedHashMap 优化)
-# ------------------------------------------------------------------
-config_model_content = """package com.aicode.model;
-
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
-/**
- * Data model for .aicode.json
- * Supports multiple context groups.
- * Optimized with LinkedHashMap to preserve order in JSON.
- */
-public class AICodeConfig {
-    public static final String DEFAULT_GROUP = "Default";
-
-    private String activeGroup = DEFAULT_GROUP;
-    private Map<String, List<String>> groups = new LinkedHashMap<>();
-
-    public AICodeConfig() {
-        groups.put(DEFAULT_GROUP, new ArrayList<>());
-    }
-
-    public String getActiveGroup() {
-        if (activeGroup == null || activeGroup.isEmpty()) {
-            activeGroup = DEFAULT_GROUP;
-        }
-        return activeGroup;
-    }
-
-    public void setActiveGroup(String activeGroup) {
-        this.activeGroup = activeGroup;
-    }
-
-    public Map<String, List<String>> getGroups() {
-        if (groups == null) {
-            groups = new LinkedHashMap<>();
-        }
-        return groups;
-    }
-
-    public void setGroups(Map<String, List<String>> groups) {
-        this.groups = groups;
-    }
-
-    public List<String> getActivePaths() {
-        return getGroups().computeIfAbsent(getActiveGroup(), k -> new ArrayList<>());
-    }
-
-    public void setActivePaths(List<String> paths) {
-        getGroups().put(getActiveGroup(), paths != null ? paths : new ArrayList<>());
-    }
-}
-"""
-
-# 2. AICodeFileService.java (保持不变: 支持 rename)
+# 1. AICodeFileService.java
+# 新增: duplicateGroup 方法
 # ------------------------------------------------------------------
 service_content = """package com.aicode.service;
 
@@ -184,6 +128,10 @@ public class AICodeFileService {
         });
     }
 
+    // ============================================================
+    // Context Group Management
+    // ============================================================
+
     public String getActiveGroupName() {
         return readConfig().getActiveGroup();
     }
@@ -205,6 +153,22 @@ public class AICodeFileService {
         if (!config.getGroups().containsKey(groupName)) {
             config.getGroups().put(groupName, new ArrayList<>());
             config.setActiveGroup(groupName);
+            saveConfig(config);
+        }
+    }
+
+    public void duplicateGroup(String sourceGroupName, String newGroupName) {
+        if (sourceGroupName == null || newGroupName == null || sourceGroupName.equals(newGroupName)) return;
+
+        AICodeConfig config = readConfig();
+        Map<String, List<String>> groups = config.getGroups();
+
+        if (groups.containsKey(sourceGroupName) && !groups.containsKey(newGroupName)) {
+            List<String> sourcePaths = groups.get(sourceGroupName);
+            // Deep copy the list
+            List<String> newPaths = new ArrayList<>(sourcePaths);
+            groups.put(newGroupName, newPaths);
+            config.setActiveGroup(newGroupName); // Auto switch to new copy
             saveConfig(config);
         }
     }
@@ -239,6 +203,10 @@ public class AICodeFileService {
         }
         saveConfig(config);
     }
+
+    // ============================================================
+    // File Path Management (Operates on ACTIVE Group)
+    // ============================================================
 
     @NotNull
     public List<String> readFilePaths() {
@@ -334,7 +302,8 @@ public class AICodeFileService {
 }
 """
 
-# 3. AICodePanel.java (更新: 菜单带图标，Dialog无图标)
+# 2. AICodePanel.java
+# 新增: Duplicate Group Action
 # ------------------------------------------------------------------
 panel_content = """package com.aicode.ui;
 
@@ -502,21 +471,21 @@ public class AICodePanel extends JPanel implements Disposable {
 
             group.addSeparator();
 
-            // 2. New Group (Icon in Menu: Yes; Icon in Dialog: No)
+            // 2. New Group
             group.add(new AnAction("New Group...", "Create a new empty context group", AllIcons.General.Add) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
                     String name = Messages.showInputDialog(project,
                         "Enter name for new context group:",
                         "New Group",
-                        null); // Set Icon to null for Dialog
+                        null);
                     if (name != null && !name.trim().isEmpty()) {
                         service.addGroup(name.trim());
                     }
                 }
             });
 
-            // 3. Rename Group (Icon in Menu: Yes; Icon in Dialog: No)
+            // 3. Rename Group
             group.add(new AnAction("Rename Current Group...", "Rename the currently active group", AllIcons.Actions.Edit) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
@@ -524,7 +493,7 @@ public class AICodePanel extends JPanel implements Disposable {
                     String newName = Messages.showInputDialog(project,
                         "Rename group '" + current + "' to:",
                         "Rename Group",
-                        null, // Set Icon to null for Dialog
+                        null,
                         current,
                         null);
 
@@ -538,7 +507,30 @@ public class AICodePanel extends JPanel implements Disposable {
                 }
             });
 
-            // 4. Delete Group
+            // 4. Duplicate Group
+            group.add(new AnAction("Duplicate Current Group...", "Create a copy of the current group", AllIcons.Actions.Copy) {
+                @Override
+                public void actionPerformed(@NotNull AnActionEvent e) {
+                    String current = service.getActiveGroupName();
+                    String newName = Messages.showInputDialog(project,
+                            "Enter name for the new group copy:",
+                            "Duplicate Group",
+                            null,
+                            current + " Copy",
+                            null);
+
+                    if (newName != null && !newName.trim().isEmpty()) {
+                        newName = newName.trim();
+                        if (service.getGroupNames().contains(newName)) {
+                            Messages.showErrorDialog(project, "Group '" + newName + "' already exists.", "Duplicate Error");
+                        } else {
+                            service.duplicateGroup(current, newName);
+                        }
+                    }
+                }
+            });
+
+            // 5. Delete Group
             group.add(new AnAction("Delete Current Group", "Delete the currently active group", AllIcons.General.Remove) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
@@ -764,8 +756,7 @@ def write_file(path, content):
         f.write(content)
     print(f"Updated: {path}")
 
-write_file(FILE_PATHS["config_model"], config_model_content)
 write_file(FILE_PATHS["service"], service_content)
 write_file(FILE_PATHS["panel"], panel_content)
 
-print("AICode Context Groups UI updated (Dialog icons removed, Menu icons restored).")
+print("AICode Duplicate Group feature implemented successfully.")

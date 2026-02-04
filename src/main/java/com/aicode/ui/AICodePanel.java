@@ -164,21 +164,21 @@ public class AICodePanel extends JPanel implements Disposable {
 
             group.addSeparator();
 
-            // 2. New Group (Icon in Menu: Yes; Icon in Dialog: No)
+            // 2. New Group
             group.add(new AnAction("New Group...", "Create a new empty context group", AllIcons.General.Add) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
                     String name = Messages.showInputDialog(project,
                         "Enter name for new context group:",
                         "New Group",
-                        null); // Set Icon to null for Dialog
+                        null);
                     if (name != null && !name.trim().isEmpty()) {
                         service.addGroup(name.trim());
                     }
                 }
             });
 
-            // 3. Rename Group (Icon in Menu: Yes; Icon in Dialog: No)
+            // 3. Rename Group
             group.add(new AnAction("Rename Current Group...", "Rename the currently active group", AllIcons.Actions.Edit) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
@@ -186,7 +186,7 @@ public class AICodePanel extends JPanel implements Disposable {
                     String newName = Messages.showInputDialog(project,
                         "Rename group '" + current + "' to:",
                         "Rename Group",
-                        null, // Set Icon to null for Dialog
+                        null,
                         current,
                         null);
 
@@ -200,7 +200,30 @@ public class AICodePanel extends JPanel implements Disposable {
                 }
             });
 
-            // 4. Delete Group
+            // 4. Duplicate Group
+            group.add(new AnAction("Duplicate Current Group...", "Create a copy of the current group", AllIcons.Actions.Copy) {
+                @Override
+                public void actionPerformed(@NotNull AnActionEvent e) {
+                    String current = service.getActiveGroupName();
+                    String newName = Messages.showInputDialog(project,
+                            "Enter name for the new group copy:",
+                            "Duplicate Group",
+                            null,
+                            current + " Copy",
+                            null);
+
+                    if (newName != null && !newName.trim().isEmpty()) {
+                        newName = newName.trim();
+                        if (service.getGroupNames().contains(newName)) {
+                            Messages.showErrorDialog(project, "Group '" + newName + "' already exists.", "Duplicate Error");
+                        } else {
+                            service.duplicateGroup(current, newName);
+                        }
+                    }
+                }
+            });
+
+            // 5. Delete Group
             group.add(new AnAction("Delete Current Group", "Delete the currently active group", AllIcons.General.Remove) {
                 @Override
                 public void actionPerformed(@NotNull AnActionEvent e) {
