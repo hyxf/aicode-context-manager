@@ -1,6 +1,7 @@
 package com.aicode.action;
 
 import com.aicode.service.AICodeFileService;
+import com.aicode.settings.AICodeIgnoreSettings;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
@@ -52,6 +53,12 @@ public class AddToAICodeAction extends AnAction implements DumbAware {
                 VfsUtilCore.visitChildrenRecursively(file, new VirtualFileVisitor<Void>() {
                     @Override
                     public boolean visitFile(@NotNull VirtualFile child) {
+                        // Check Ignore List (Directory or File name)
+                        if (AICodeIgnoreSettings.isIgnored(child.getName())) {
+                            // Return false to skip processing this directory's children
+                            return false;
+                        }
+
                         if (!child.isDirectory() && !".aicode.json".equals(child.getName())) {
                             String relativePath = service.getRelativePath(child);
                             if (relativePath != null && !existingSet.contains(relativePath)) {
@@ -63,6 +70,11 @@ public class AddToAICodeAction extends AnAction implements DumbAware {
                 });
             } else {
                 // Single file
+                // Check if the single file selected is in the ignore list
+                if (AICodeIgnoreSettings.isIgnored(file.getName())) {
+                    continue;
+                }
+
                 if (!".aicode.json".equals(file.getName())) {
                     String relativePath = service.getRelativePath(file);
                     if (relativePath != null && !existingSet.contains(relativePath)) {
@@ -93,8 +105,10 @@ public class AddToAICodeAction extends AnAction implements DumbAware {
                 boolean isRoot = file.equals(project.getBaseDir());
                 // 2. Exclude config file
                 boolean isConfigFile = ".aicode.json".equals(file.getName());
+                // 3. Exclude Ignored Files
+                boolean isIgnored = AICodeIgnoreSettings.isIgnored(file.getName());
 
-                if (!isRoot && !isConfigFile) {
+                if (!isRoot && !isConfigFile && !isIgnored) {
                     if (file.isDirectory()) {
                         // Directory is always addable (simplified)
                         visible = true;

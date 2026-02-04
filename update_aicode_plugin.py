@@ -1,141 +1,195 @@
 import os
 
-# 定义文件路径
-FILE_PATHS = {
-    "icons_class": os.path.join("src", "main", "java", "com", "aicode", "icons", "AICodeIcons.java"),
-    "provider_class": os.path.join("src", "main", "java", "com", "aicode", "provider", "AICodeIconProvider.java"),
-    "plugin_xml": os.path.join("src", "main", "resources", "META-INF", "plugin.xml")
-}
+# 1. 定义文件路径
+# 新建的配置类路径
+file_settings = "src/main/java/com/aicode/settings/AICodeIgnoreSettings.java"
+# 需要修改的 Action
+file_action = "src/main/java/com/aicode/action/AddToAICodeAction.java"
 
-# 1. 新增 AICodeIcons.java
-# ------------------------------------------------------------------
-icons_class_content = """package com.aicode.icons;
+# 2. 新建 AICodeIgnoreSettings.java 内容
+content_settings = """package com.aicode.settings;
 
-import com.intellij.openapi.util.IconLoader;
+import java.util.Arrays;
+import java.util.List;
 
-import javax.swing.*;
+/**
+ * Configuration class for ignored files and directories.
+ * Defined in code as a static list.
+ */
+public class AICodeIgnoreSettings {
 
-public class AICodeIcons {
-    public static final Icon LOGO = IconLoader.getIcon("/icons/aicode.svg", AICodeIcons.class);
-}
-"""
+    // Configure your ignore list here
+    public static final List<String> IGNORED_NAMES = Arrays.asList(
+            ".git",
+            ".idea",
+            ".gradle",
+            "build",
+            "target",
+            "out",
+            "node_modules",
+            ".DS_Store",
+            "dist",
+            ".mvn",
+            "venv",
+            "__pycache__"
+    );
 
-# 2. 新增 AICodeIconProvider.java
-# ------------------------------------------------------------------
-provider_class_content = """package com.aicode.provider;
-
-import com.aicode.icons.AICodeIcons;
-import com.intellij.ide.IconProvider;
-import com.intellij.psi.PsiElement;
-import com.intellij.psi.PsiFile;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
-import javax.swing.*;
-
-public class AICodeIconProvider extends IconProvider {
-    @Override
-    public @Nullable Icon getIcon(@NotNull PsiElement element, int flags) {
-        if (element instanceof PsiFile) {
-            PsiFile psiFile = (PsiFile) element;
-            if (".aicode.json".equals(psiFile.getName())) {
-                return AICodeIcons.LOGO;
-            }
-        }
-        return null;
+    /**
+     * Check if the file/directory name should be ignored.
+     */
+    public static boolean isIgnored(String name) {
+        return IGNORED_NAMES.contains(name);
     }
 }
 """
 
-# 3. 更新 plugin.xml
-# ------------------------------------------------------------------
-plugin_xml_content = """<idea-plugin>
-    <id>com.github.hyxf.aicode-context-manager</id>
-    <name>AICode Context Manager</name>
-    <vendor email="xchao887@gmail.com" url="https://github.com/hyxf/aicode-context-manager">AICode</vendor>
+# 3. 更新 AddToAICodeAction.java 内容
+# 引入了 AICodeIgnoreSettings 并应用过滤逻辑
+content_action = """package com.aicode.action;
 
-    <description><![CDATA[
-    <h2>AICode Context Manager</h2>
-    <p>Manage code context files for AI assistance with one-click Markdown export.</p>
-    <br/>
-    <h3>Features:</h3>
-    <ul>
-      <li>Add/Remove files to AI context via right-click menu</li>
-      <li>Visualize context files in Tool Window</li>
-      <li>Support multi-module projects</li>
-      <li>Auto-sync file changes (rename, move, delete)</li>
-      <li>Export all context files as Markdown code package</li>
-      <li>Multiple Context Groups support</li>
-    </ul>
-    ]]></description>
+import com.aicode.service.AICodeFileService;
+import com.aicode.settings.AICodeIgnoreSettings;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.project.DumbAware;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VfsUtilCore;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileVisitor;
+import org.jetbrains.annotations.NotNull;
 
-    <depends>com.intellij.modules.platform</depends>
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
-    <extensions defaultExtensionNs="com.intellij">
-        <notificationGroup
-                id="AICode"
-                displayType="BALLOON"
-                isLogByDefault="true"/>
+/**
+ * Action to add file or directory (recursively) to AICode context
+ * Supports multiple file selection.
+ */
+public class AddToAICodeAction extends AnAction implements DumbAware {
 
-        <!-- Tool Window -->
-        <toolWindow
-                id="AICode Context"
-                anchor="right"
-                icon="/icons/aicode.svg"
-                factoryClass="com.aicode.ui.AICodeToolWindowFactory"/>
+    @Override
+    public void actionPerformed(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        // Support multi-selection
+        VirtualFile[] files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
 
-        <!-- Project Service -->
-        <projectService
-                serviceImplementation="com.aicode.service.AICodeFileService"/>
+        if (project == null || files == null || files.length == 0) {
+            return;
+        }
 
-        <!-- Icon Provider -->
-        <iconProvider implementation="com.aicode.provider.AICodeIconProvider"/>
-    </extensions>
+        AICodeFileService service = AICodeFileService.getInstance(project);
+        VirtualFile baseDir = project.getBaseDir();
 
-    <actions>
-        <group id="AICodeGroup" text="AICode" popup="true">
-            <!-- 1. Project View: Keep in CutCopyPaste group at the bottom -->
-            <add-to-group group-id="CutCopyPasteGroup" anchor="last"/>
+        // Batch operation to avoid multiple refreshes
+        List<String> currentPaths = new ArrayList<>(service.readFilePaths());
+        Set<String> existingSet = new HashSet<>(currentPaths);
+        List<String> newPathsToAdd = new ArrayList<>();
 
-            <!-- 2. Editor Tab: Force to FIRST position (Top of the menu) -->
-            <add-to-group group-id="EditorTabPopupMenu" anchor="first"/>
+        for (VirtualFile file : files) {
+            // Prevent adding project root
+            if (file.equals(baseDir)) {
+                continue;
+            }
 
-            <action id="com.aicode.action.AddToAICodeAction"
-                    class="com.aicode.action.AddToAICodeAction"
-                    text="Add to AICode"
-                    description="Add file to AICode context">
-            </action>
+            if (file.isDirectory()) {
+                // Recursively visit directory
+                VfsUtilCore.visitChildrenRecursively(file, new VirtualFileVisitor<Void>() {
+                    @Override
+                    public boolean visitFile(@NotNull VirtualFile child) {
+                        // Check Ignore List (Directory or File name)
+                        if (AICodeIgnoreSettings.isIgnored(child.getName())) {
+                            // Return false to skip processing this directory's children
+                            return false;
+                        }
 
-            <action id="com.aicode.action.RemoveFromAICodeAction"
-                    class="com.aicode.action.RemoveFromAICodeAction"
-                    text="Remove from AICode"
-                    description="Remove file from AICode context">
-            </action>
+                        if (!child.isDirectory() && !".aicode.json".equals(child.getName())) {
+                            String relativePath = service.getRelativePath(child);
+                            if (relativePath != null && !existingSet.contains(relativePath)) {
+                                newPathsToAdd.add(relativePath);
+                            }
+                        }
+                        return true;
+                    }
+                });
+            } else {
+                // Single file
+                // Check if the single file selected is in the ignore list
+                if (AICodeIgnoreSettings.isIgnored(file.getName())) {
+                    continue;
+                }
 
-            <action id="com.aicode.action.CopyMarkdownAction"
-                    class="com.aicode.action.CopyMarkdownAction"
-                    text="Copy as Markdown"
-                    description="Export AICode context as Markdown">
-            </action>
-        </group>
-    </actions>
+                if (!".aicode.json".equals(file.getName())) {
+                    String relativePath = service.getRelativePath(file);
+                    if (relativePath != null && !existingSet.contains(relativePath)) {
+                        newPathsToAdd.add(relativePath);
+                    }
+                }
+            }
+        }
 
-    <projectListeners>
-        <listener class="com.aicode.listener.AICodeFileListener"
-                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
-    </projectListeners>
-</idea-plugin>
+        if (!newPathsToAdd.isEmpty()) {
+            currentPaths.addAll(newPathsToAdd);
+            service.writeFilePaths(currentPaths);
+        }
+    }
+
+    @Override
+    public void update(@NotNull AnActionEvent e) {
+        Project project = e.getProject();
+        VirtualFile[] files = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY);
+
+        boolean visible = false;
+        if (project != null && files != null && files.length > 0) {
+            AICodeFileService service = AICodeFileService.getInstance(project);
+
+            // Check if ANY of the selected files can be added
+            for (VirtualFile file : files) {
+                // 1. Exclude Project Root
+                boolean isRoot = file.equals(project.getBaseDir());
+                // 2. Exclude config file
+                boolean isConfigFile = ".aicode.json".equals(file.getName());
+                // 3. Exclude Ignored Files
+                boolean isIgnored = AICodeIgnoreSettings.isIgnored(file.getName());
+
+                if (!isRoot && !isConfigFile && !isIgnored) {
+                    if (file.isDirectory()) {
+                        // Directory is always addable (simplified)
+                        visible = true;
+                    } else {
+                        // File is visible if NOT in list
+                        if (!service.containsFile(file)) {
+                            visible = true;
+                        }
+                    }
+                }
+
+                // If we found at least one valid candidate, enable the action
+                if (visible) break;
+            }
+        }
+
+        e.getPresentation().setEnabledAndVisible(visible);
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
+    }
+}
 """
 
 def write_file(path, content):
+    # Ensure directory exists
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, 'w', encoding='utf-8') as f:
         f.write(content)
     print(f"Updated: {path}")
 
-# 执行文件写入
-write_file(FILE_PATHS["icons_class"], icons_class_content)
-write_file(FILE_PATHS["provider_class"], provider_class_content)
-write_file(FILE_PATHS["plugin_xml"], plugin_xml_content)
-
-print("AICode Custom Icon Provider implementation completed.")
+if __name__ == "__main__":
+    write_file(file_settings, content_settings)
+    write_file(file_action, content_action)
+    print("Code update complete.")
