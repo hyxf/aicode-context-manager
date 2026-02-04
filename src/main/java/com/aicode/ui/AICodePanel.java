@@ -1,6 +1,7 @@
 package com.aicode.ui;
 
 import com.aicode.service.AICodeFileService;
+import com.aicode.settings.AICodeIgnoreSettings;
 import com.aicode.util.ClipboardService;
 import com.aicode.util.MarkdownBuilder;
 import com.intellij.icons.AllIcons;
@@ -15,7 +16,9 @@ import com.intellij.openapi.actionSystem.ex.ComboBoxAction;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.vfs.VirtualFileVisitor;
 import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.JBScrollPane;
@@ -45,7 +48,8 @@ public class AICodePanel extends JPanel implements Disposable {
 
     public AICodePanel(@NotNull Project project) {
         this.project = project;
-        this.rootNode = new DefaultMutableTreeNode(new AICodeNodeData("Project", null, true));
+        // Root node initialization
+        this.rootNode = new DefaultMutableTreeNode(new AICodeNodeData("Project", null, true, false));
         this.treeModel = new DefaultTreeModel(rootNode);
         this.tree = new Tree(treeModel);
 
@@ -355,21 +359,29 @@ public class AICodePanel extends JPanel implements Disposable {
             String groupName = service.getActiveGroupName();
             rootData.displayName = "Group: " + groupName;
             rootData.virtualFile = project.getBaseDir();
+            // We don't mark root as missing to keep UI clean, per requirements
+            rootData.hasMissingFiles = false;
 
             List<String> paths = service.readFilePaths();
             Collections.sort(paths);
-            buildTreeStructure(paths, service);
+
+            // Convert list to Set for fast O(1) lookups during tree building
+            Set<String> pathSet = new HashSet<>(paths);
+
+            buildTreeStructure(paths, pathSet, service);
             treeModel.reload();
             TreeUtil.expandAll(tree);
         });
     }
 
-    private void buildTreeStructure(List<String> paths, AICodeFileService service) {
+    private void buildTreeStructure(List<String> paths, Set<String> pathSet, AICodeFileService service) {
         Map<String, DefaultMutableTreeNode> directoryNodes = new HashMap<>();
+
         for (String path : paths) {
             String[] parts = path.split("/");
             DefaultMutableTreeNode currentNode = rootNode;
             String currentPathAccumulator = "";
+
             for (int i = 0; i < parts.length; i++) {
                 String part = parts[i];
                 boolean isLast = (i == parts.length - 1);
@@ -378,7 +390,8 @@ public class AICodePanel extends JPanel implements Disposable {
 
                 if (isLast) {
                     VirtualFile file = service.getFileFromPath(path);
-                    AICodeNodeData fileData = new AICodeNodeData(part, path, false);
+                    // Leaf node (File)
+                    AICodeNodeData fileData = new AICodeNodeData(part, path, false, false);
                     fileData.virtualFile = file;
                     currentNode.add(new DefaultMutableTreeNode(fileData));
                 } else {
@@ -387,7 +400,11 @@ public class AICodePanel extends JPanel implements Disposable {
                         currentNode = directoryNodes.get(dirPath);
                     } else {
                         VirtualFile dirFile = service.getFileFromPath(dirPath);
-                        AICodeNodeData dirData = new AICodeNodeData(part, dirPath, true);
+
+                        // Check if this directory has missing files (files on disk but not in context)
+                        boolean hasMissing = checkHasMissingFiles(dirFile, pathSet, service);
+
+                        AICodeNodeData dirData = new AICodeNodeData(part, dirPath, true, hasMissing);
                         dirData.virtualFile = dirFile;
                         DefaultMutableTreeNode dirNode = new DefaultMutableTreeNode(dirData);
                         directoryNodes.put(dirPath, dirNode);
@@ -397,6 +414,44 @@ public class AICodePanel extends JPanel implements Disposable {
                 }
             }
         }
+    }
+
+    /**
+     * Checks if a directory contains any file that is NOT in the tracked paths set.
+     * Uses recursion but respects Ignore Settings to be efficient.
+     */
+    private boolean checkHasMissingFiles(VirtualFile dir, Set<String> trackedPaths, AICodeFileService service) {
+        if (dir == null || !dir.isValid()) return false;
+
+        // Use a 1-element array to allow modification inside inner class
+        final boolean[] missingFound = {false};
+
+        VfsUtilCore.visitChildrenRecursively(dir, new VirtualFileVisitor<Void>() {
+            @Override
+            public boolean visitFile(@NotNull VirtualFile file) {
+                if (missingFound[0]) return false; // Stop checking if already found
+
+                // 1. Ignore check (stop recursing if directory is ignored)
+                if (AICodeIgnoreSettings.isIgnored(file.getName())) {
+                    return false;
+                }
+
+                if (!file.isDirectory()) {
+                    // 2. File Check
+                    if (!".aicode.json".equals(file.getName())) {
+                         String relativePath = service.getRelativePath(file);
+                         if (relativePath != null && !trackedPaths.contains(relativePath)) {
+                             // Found a file on disk that is NOT tracked
+                             missingFound[0] = true;
+                             return false; // Stop visiting
+                         }
+                    }
+                }
+                return true; // Continue visiting
+            }
+        });
+
+        return missingFound[0];
     }
 
     private void openAICodeFile() {
@@ -414,11 +469,14 @@ public class AICodePanel extends JPanel implements Disposable {
         String displayName;
         String fullRelativePath;
         boolean isDirectory;
+        boolean hasMissingFiles; // True if this directory has children not in context
         VirtualFile virtualFile;
-        public AICodeNodeData(String displayName, String fullRelativePath, boolean isDirectory) {
+
+        public AICodeNodeData(String displayName, String fullRelativePath, boolean isDirectory, boolean hasMissingFiles) {
             this.displayName = displayName;
             this.fullRelativePath = fullRelativePath;
             this.isDirectory = isDirectory;
+            this.hasMissingFiles = hasMissingFiles;
         }
         @Override public String toString() { return displayName; }
     }
@@ -431,6 +489,8 @@ public class AICodePanel extends JPanel implements Disposable {
             Object userObject = node.getUserObject();
             if (userObject instanceof AICodeNodeData) {
                 AICodeNodeData data = (AICodeNodeData) userObject;
+
+                // Icon
                 if (data.displayName.startsWith("Group: ")) {
                     setIcon(AllIcons.Nodes.ModuleGroup);
                 } else if (data.virtualFile != null) {
@@ -438,11 +498,17 @@ public class AICodePanel extends JPanel implements Disposable {
                 } else {
                     setIcon(data.isDirectory ? AllIcons.Nodes.Folder : AllIcons.FileTypes.Unknown);
                 }
+
+                // Text
                 if (data.virtualFile == null && !data.isDirectory && !data.displayName.startsWith("Group: ")) {
                     append(data.displayName, SimpleTextAttributes.ERROR_ATTRIBUTES);
                     append(" (missing)", SimpleTextAttributes.GRAYED_SMALL_ATTRIBUTES);
                 } else {
                     append(data.displayName, SimpleTextAttributes.REGULAR_ATTRIBUTES);
+                    // Add partial selection marker
+                    if (data.isDirectory && data.hasMissingFiles) {
+                        append(" (*)", SimpleTextAttributes.GRAYED_ATTRIBUTES);
+                    }
                 }
             }
         }
