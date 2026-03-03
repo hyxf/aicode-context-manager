@@ -39,6 +39,9 @@
 
         <!-- Icon Provider -->
         <iconProvider implementation="com.aicode.provider.AICodeIconProvider"/>
+
+        <!-- Editor Notification Provider -->
+        <editorNotificationProvider implementation="com.aicode.provider.AICodeEditorNotificationProvider"/>
     </extensions>
 
     <actions>

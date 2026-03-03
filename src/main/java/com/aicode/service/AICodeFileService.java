@@ -8,6 +8,7 @@ import com.google.gson.reflect.TypeToken;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.ui.EditorNotifications;
 import com.intellij.util.messages.Topic;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -262,6 +263,7 @@ public class AICodeFileService {
     public void notifyChange() {
         if (project.isDisposed()) return;
         project.getMessageBus().syncPublisher(AICODE_TOPIC).onContextChanged();
+        EditorNotifications.getInstance(project).updateAllNotifications(); // Trigger editor banner refresh
     }
 
     public boolean containsFile(@NotNull VirtualFile file) {
