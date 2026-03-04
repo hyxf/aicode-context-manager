@@ -27,6 +27,11 @@ public class AICodeEditorNotificationProvider implements EditorNotificationProvi
             return null;
         }
 
+        // Banner 开关关闭时不显示
+        if (!service.isBannerEnabled()) {
+            return null;
+        }
+
         // Only show banner if the file is tracked in the current AICode Context
         if (service.containsFile(file)) {
             return fileEditor -> {

@@ -31,6 +31,18 @@ public class AICodeFileService {
     private final Project project;
     private final Gson gson;
 
+    // Banner 显示开关（内存状态，重启后默认开启）
+    private volatile boolean bannerEnabled = true;
+
+    public boolean isBannerEnabled() {
+        return bannerEnabled;
+    }
+
+    public void setBannerEnabled(boolean enabled) {
+        this.bannerEnabled = enabled;
+        notifyChange();
+    }
+
     // In-memory cache to avoid repeated disk IO in containsFile() (called on every icon render)
     private volatile Set<String> cachedPaths = null;
 

@@ -1,5 +1,6 @@
 package com.aicode.ui;
 
+import com.aicode.icons.AICodeIcons;
 import com.aicode.service.AICodeFileService;
 import com.aicode.settings.AICodeIgnoreSettings;
 import com.aicode.util.ClipboardService;
@@ -116,10 +117,34 @@ public class AICodePanel extends JPanel implements Disposable {
         actionGroup.add(actionsManager.createCollapseAllAction(treeExpander, tree));
 
         actionGroup.addSeparator();
+
         actionGroup.add(new AnAction("Refresh", "Refresh tree", AllIcons.Actions.Refresh) {
             @Override
             public void actionPerformed(@NotNull AnActionEvent e) {
                 refreshTree();
+            }
+        });
+
+        // Banner 显示/隐藏开关，位于 Refresh 右侧
+        actionGroup.add(new AnAction() {
+            @Override
+            public void actionPerformed(@NotNull AnActionEvent e) {
+                AICodeFileService service = AICodeFileService.getInstance(project);
+                service.setBannerEnabled(!service.isBannerEnabled());
+            }
+
+            @Override
+            public void update(@NotNull AnActionEvent e) {
+                AICodeFileService service = AICodeFileService.getInstance(project);
+                boolean enabled = service.isBannerEnabled();
+                e.getPresentation().setIcon(enabled ? AICodeIcons.EYE_OPEN : AICodeIcons.EYE_CLOSE);
+                e.getPresentation().setText(enabled ? "Hide Editor Banner" : "Show Editor Banner");
+                e.getPresentation().setDescription(enabled ? "Click to hide editor banner" : "Click to show editor banner");
+            }
+
+            @Override
+            public @NotNull ActionUpdateThread getActionUpdateThread() {
+                return ActionUpdateThread.BGT;
             }
         });
 
