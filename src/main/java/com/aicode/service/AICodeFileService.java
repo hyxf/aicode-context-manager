@@ -32,7 +32,7 @@ public class AICodeFileService {
     private final Gson gson;
 
     // Banner 显示开关（内存状态，重启后默认开启）
-    private volatile boolean bannerEnabled = true;
+    private volatile boolean bannerEnabled = false;
 
     public boolean isBannerEnabled() {
         return bannerEnabled;
