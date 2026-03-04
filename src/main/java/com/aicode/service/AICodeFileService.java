@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.lang.reflect.Type;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,9 @@ public class AICodeFileService {
     private static final String AICODE_FILE_NAME = ".aicode.json";
     private final Project project;
     private final Gson gson;
+
+    // In-memory cache to avoid repeated disk IO in containsFile() (called on every icon render)
+    private volatile Set<String> cachedPaths = null;
 
     public static final Topic<AICodeStateListener> AICODE_TOPIC =
             Topic.create("AICode Context Changed", AICodeStateListener.class);
@@ -155,10 +159,9 @@ public class AICodeFileService {
 
         if (groups.containsKey(sourceGroupName) && !groups.containsKey(newGroupName)) {
             List<String> sourcePaths = groups.get(sourceGroupName);
-            // Deep copy the list
             List<String> newPaths = new ArrayList<>(sourcePaths);
             groups.put(newGroupName, newPaths);
-            config.setActiveGroup(newGroupName); // Auto switch to new copy
+            config.setActiveGroup(newGroupName);
             saveConfig(config);
         }
     }
@@ -200,7 +203,12 @@ public class AICodeFileService {
 
     @NotNull
     public List<String> readFilePaths() {
-        return readConfig().getActivePaths();
+        if (cachedPaths != null) {
+            return new ArrayList<>(cachedPaths);
+        }
+        List<String> paths = readConfig().getActivePaths();
+        cachedPaths = new HashSet<>(paths);
+        return paths;
     }
 
     public void writeFilePaths(@NotNull List<String> paths) {
@@ -262,13 +270,23 @@ public class AICodeFileService {
 
     public void notifyChange() {
         if (project.isDisposed()) return;
+        cachedPaths = null; // 清除缓存，下次重新从磁盘读取
         project.getMessageBus().syncPublisher(AICODE_TOPIC).onContextChanged();
-        EditorNotifications.getInstance(project).updateAllNotifications(); // Trigger editor banner refresh
+        EditorNotifications.getInstance(project).updateAllNotifications();
+        // 刷新 Project View 以更新文件图标
+        com.intellij.openapi.application.ApplicationManager.getApplication().invokeLater(() -> {
+            if (!project.isDisposed()) {
+                com.intellij.ide.projectView.ProjectView.getInstance(project).refresh();
+            }
+        });
     }
 
     public boolean containsFile(@NotNull VirtualFile file) {
         String relativePath = getRelativePath(file);
         if (relativePath == null) return false;
+        if (cachedPaths != null) {
+            return cachedPaths.contains(relativePath);
+        }
         return readFilePaths().contains(relativePath);
     }
 

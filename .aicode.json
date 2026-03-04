@@ -17,7 +17,8 @@
       "src/main/java/com/aicode/ui/AICodePanel.java",
       "src/main/java/com/aicode/action/CopyMarkdownAction.java",
       "src/main/java/com/aicode/action/RemoveFromAICodeAction.java",
-      "src/main/java/com/aicode/action/AddToAICodeAction.java"
+      "src/main/java/com/aicode/action/AddToAICodeAction.java",
+      "src/main/java/com/aicode/provider/AICodeEditorNotificationProvider.java"
     ]
   }
 }
