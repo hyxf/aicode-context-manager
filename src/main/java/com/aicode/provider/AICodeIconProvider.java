@@ -8,7 +8,6 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.ui.LayeredIcon;
-import com.intellij.ui.RetrievableIcon;
 import com.intellij.util.PsiIconUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -38,7 +37,7 @@ public class AICodeIconProvider extends IconProvider {
         if (project.isDisposed()) return null;
 
         AICodeFileService service = AICodeFileService.getInstance(project);
-//        if (!service.isBannerEnabled()) return null;
+        // if (!service.isBannerEnabled()) return null;
         if (!service.containsFile(virtualFile)) return null;
 
         try {
@@ -51,13 +50,6 @@ public class AICodeIconProvider extends IconProvider {
             // 获取其他 Provider 的真实图标（Java/Kotlin 等插件图标）
             Icon providersIcon = PsiIconUtil.getProvidersIcon(psiFile, flags);
             Icon originalIcon = (providersIcon != null) ? providersIcon : baseIcon;
-
-            // 循环解包，直到拿到真实同步图标
-            while (originalIcon instanceof RetrievableIcon) {
-                Icon retrieved = ((RetrievableIcon) originalIcon).retrieveIcon();
-                if (retrieved == null || retrieved == originalIcon) break;
-                originalIcon = retrieved;
-            }
 
             // 叠加绿色圆点到左上角
             LayeredIcon layeredIcon = new LayeredIcon(2);

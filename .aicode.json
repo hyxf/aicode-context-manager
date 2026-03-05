@@ -12,7 +12,6 @@
       "build.gradle.kts",
       "src/main/java/com/aicode/service/AICodeFileService.java",
       "src/main/java/com/aicode/util/MarkdownBuilder.java",
-      "src/main/java/com/aicode/provider/AICodeIconProvider.java",
       "src/main/java/com/aicode/icons/AICodeIcons.java",
       "src/main/java/com/aicode/ui/AICodePanel.java",
       "src/main/java/com/aicode/action/CopyMarkdownAction.java",
