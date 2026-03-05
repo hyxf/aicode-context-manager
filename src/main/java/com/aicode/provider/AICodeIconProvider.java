@@ -17,9 +17,8 @@ public class AICodeIconProvider extends IconProvider {
 
     @Override
     public @Nullable Icon getIcon(@NotNull PsiElement element, int flags) {
-        if (!(element instanceof PsiFile)) return null;
+        if (!(element instanceof PsiFile psiFile)) return null;
 
-        PsiFile psiFile = (PsiFile) element;
         VirtualFile virtualFile = psiFile.getVirtualFile();
         if (virtualFile == null) return null;
 
