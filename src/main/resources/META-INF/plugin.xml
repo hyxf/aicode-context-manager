@@ -38,7 +38,7 @@
                 serviceImplementation="com.aicode.service.AICodeFileService"/>
 
         <!-- Icon Provider -->
-        <iconProvider implementation="com.aicode.provider.AICodeIconProvider"/>
+        <iconProvider implementation="com.aicode.provider.AICodeIconProvider" order="first"/>
 
         <!-- Editor Notification Provider -->
         <editorNotificationProvider implementation="com.aicode.provider.AICodeEditorNotificationProvider"/>
