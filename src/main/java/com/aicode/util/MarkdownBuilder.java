@@ -23,8 +23,8 @@ public class MarkdownBuilder {
         StringBuilder sb = new StringBuilder();
 
         // Header
-        sb.append("# AICode Context Export\n\n");
-        sb.append("> Generated from .aicode.json  \n");
+//        sb.append("# AICode Context Export\n\n");
+//        sb.append("> Generated from .aicode.json  \n");
         sb.append("> Project: ").append(project.getName()).append("  \n");
         sb.append("> File Count: ").append(filePaths.size()).append("  \n\n");
         sb.append("---\n\n");

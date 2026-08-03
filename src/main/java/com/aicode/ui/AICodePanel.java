@@ -104,6 +104,13 @@ public class AICodePanel extends JPanel implements Disposable {
             }
         });
 
+        actionGroup.add(new AnAction("Copy File List", "Copy current context group's file list", AllIcons.Actions.ListFiles) {
+            @Override
+            public void actionPerformed(@NotNull AnActionEvent e) {
+                copyFileListToClipboard();
+            }
+        });
+
         actionGroup.addSeparator();
 
         TreeExpander treeExpander = new TreeExpander() {
@@ -297,6 +304,27 @@ public class AICodePanel extends JPanel implements Disposable {
             showNotification("Copied group '" + group + "' (" + filePaths.size() + " files) to clipboard.", NotificationType.INFORMATION);
         } catch (Exception ex) {
             showNotification("Failed to export: " + ex.getMessage(), NotificationType.ERROR);
+        }
+    }
+
+    private void copyFileListToClipboard() {
+        AICodeFileService service = AICodeFileService.getInstance(project);
+        List<String> filePaths = service.readFilePaths();
+        String group = service.getActiveGroupName();
+
+        if (filePaths.isEmpty()) {
+            showNotification("Group '" + group + "' is empty.", NotificationType.WARNING);
+            return;
+        }
+
+        try {
+            String fileList = filePaths.stream()
+                    .map(path -> "@" + path)
+                    .collect(java.util.stream.Collectors.joining("\n"));
+            ClipboardService.copyToClipboard(fileList);
+            showNotification("Copied file list for group '" + group + "' (" + filePaths.size() + " files) to clipboard.", NotificationType.INFORMATION);
+        } catch (Exception ex) {
+            showNotification("Failed to copy file list: " + ex.getMessage(), NotificationType.ERROR);
         }
     }
 
