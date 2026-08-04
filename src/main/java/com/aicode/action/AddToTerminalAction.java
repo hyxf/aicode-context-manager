@@ -18,6 +18,7 @@ import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.terminal.ui.TerminalWidget;
 import com.intellij.ui.content.Content;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager;
 
 import java.io.IOException;
@@ -26,6 +27,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Inserts selected project paths at the cursor of the currently selected terminal.
@@ -38,6 +40,8 @@ public class AddToTerminalAction extends AnAction implements DumbAware {
     private static final String TERMINAL_TABS_MANAGER_CLASS =
             "com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTabsManager";
     private static final DataKey<Object> TERMINAL_VIEW_KEY = DataKey.create("TerminalView");
+    private static final String NO_TERMINAL_MESSAGE =
+            "Open a terminal session before adding a file path";
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
@@ -57,39 +61,39 @@ public class AddToTerminalAction extends AnAction implements DumbAware {
         ToolWindow toolWindow = terminalManager.getToolWindow();
         Content selectedContent = toolWindow == null ? null : toolWindow.getContentManager().getSelectedContent();
         if (selectedContent == null) {
-            showNotification(project, "Open a terminal session before adding a file path", NotificationType.WARNING);
+            showNotification(project, NO_TERMINAL_MESSAGE, NotificationType.WARNING);
             return;
         }
 
         TerminalWidget terminalWidget = TerminalToolWindowManager.findWidgetByContent(selectedContent);
-
-        String text = relativePaths.stream()
-                .map(path -> "@" + path)
-                .reduce((left, right) -> left + " " + right)
-                .orElse("");
+        String text = buildTerminalText(relativePaths);
         try {
-            boolean sentToReworkedTerminal = sendToReworkedTerminal(project, selectedContent, text);
-            if (!sentToReworkedTerminal && terminalWidget == null) {
-                showNotification(project, "Open a terminal session before adding a file path", NotificationType.WARNING);
+            if (!sendToSelectedTerminal(project, selectedContent, terminalWidget, text)) {
+                showNotification(project, NO_TERMINAL_MESSAGE, NotificationType.WARNING);
                 return;
-            }
-            if (!sentToReworkedTerminal) {
-                sendToClassicTerminal(terminalWidget, text);
             }
         } catch (ReflectiveOperationException | UncheckedIOException ex) {
             LOG.warn("Failed to insert paths into the selected terminal", ex);
-            showNotification(project, "Failed to add the file path to Terminal: " + ex.getMessage(), NotificationType.ERROR);
+            showNotification(project, getFailureMessage(ex), NotificationType.ERROR);
             return;
         }
-        if (toolWindow != null) {
-            toolWindow.activate(() -> {
-                if (terminalWidget != null) {
-                    terminalWidget.requestFocus();
-                } else {
-                    selectedContent.getComponent().requestFocusInWindow();
-                }
-            });
+        toolWindow.activate(() -> requestTerminalFocus(selectedContent, terminalWidget));
+    }
+
+    private static boolean sendToSelectedTerminal(
+            @NotNull Project project,
+            @NotNull Content selectedContent,
+            @Nullable TerminalWidget terminalWidget,
+            @NotNull String text
+    ) throws ReflectiveOperationException {
+        if (sendToReworkedTerminal(project, selectedContent, text)) {
+            return true;
         }
+        if (terminalWidget == null) {
+            return false;
+        }
+        sendToClassicTerminal(terminalWidget, text);
+        return true;
     }
 
     /**
@@ -167,6 +171,35 @@ public class AddToTerminalAction extends AnAction implements DumbAware {
                 throw new UncheckedIOException(ex);
             }
         });
+    }
+
+    private static @NotNull String buildTerminalText(@NotNull List<String> relativePaths) {
+        return relativePaths.stream()
+                .map(path -> "@" + path)
+                .collect(Collectors.joining(" "));
+    }
+
+    private static void requestTerminalFocus(
+            @NotNull Content selectedContent,
+            @Nullable TerminalWidget terminalWidget
+    ) {
+        if (terminalWidget != null) {
+            terminalWidget.requestFocus();
+        } else {
+            selectedContent.getComponent().requestFocusInWindow();
+        }
+    }
+
+    private static @NotNull String getFailureMessage(@NotNull Exception exception) {
+        Throwable cause = exception;
+        while (cause.getCause() != null && cause.getCause() != cause) {
+            cause = cause.getCause();
+        }
+        String detail = cause.getMessage();
+        if (detail == null || detail.isBlank()) {
+            return "Failed to add the file path to Terminal";
+        }
+        return "Failed to add the file path to Terminal: " + detail;
     }
 
     @Override
