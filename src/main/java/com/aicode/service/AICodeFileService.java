@@ -7,6 +7,7 @@ import com.google.gson.JsonSyntaxException;
 import com.google.gson.reflect.TypeToken;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.ui.EditorNotifications;
 import com.intellij.util.messages.Topic;
@@ -306,12 +307,7 @@ public class AICodeFileService {
     public String getRelativePath(@NotNull VirtualFile file) {
         VirtualFile baseDir = project.getBaseDir();
         if (baseDir == null) return null;
-        String basePath = baseDir.getPath();
-        String filePath = file.getPath();
-        if (!filePath.startsWith(basePath)) return null;
-        String relativePath = filePath.substring(basePath.length());
-        if (relativePath.startsWith("/")) relativePath = relativePath.substring(1);
-        return relativePath;
+        return VfsUtilCore.getRelativePath(file, baseDir, '/');
     }
 
     @Nullable

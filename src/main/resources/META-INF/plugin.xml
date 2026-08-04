@@ -68,6 +68,11 @@
                 <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift X"/>
             </action>
 
+            <action id="com.aicode.action.CopyRelativePathAction"
+                    class="com.aicode.action.CopyRelativePathAction"
+                    text="Copy Relative Path"
+                    description="Copy path relative to the project root"/>
+
             <action id="com.aicode.action.CopyMarkdownAction"
                     class="com.aicode.action.CopyMarkdownAction"
                     text="Copy as Markdown"
