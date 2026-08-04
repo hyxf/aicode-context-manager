@@ -33,6 +33,10 @@ import java.util.List;
 public class AddToTerminalAction extends AnAction implements DumbAware {
     private static final Logger LOG = Logger.getInstance(AddToTerminalAction.class);
     private static final String TERMINAL_VIEW_CLASS = "com.intellij.terminal.frontend.view.TerminalView";
+    private static final String TERMINAL_TAB_CLASS =
+            "com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTab";
+    private static final String TERMINAL_TABS_MANAGER_CLASS =
+            "com.intellij.terminal.frontend.toolwindow.TerminalToolWindowTabsManager";
     private static final DataKey<Object> TERMINAL_VIEW_KEY = DataKey.create("TerminalView");
 
     @Override
@@ -52,20 +56,24 @@ public class AddToTerminalAction extends AnAction implements DumbAware {
         TerminalToolWindowManager terminalManager = TerminalToolWindowManager.getInstance(project);
         ToolWindow toolWindow = terminalManager.getToolWindow();
         Content selectedContent = toolWindow == null ? null : toolWindow.getContentManager().getSelectedContent();
-        TerminalWidget terminalWidget = selectedContent == null
-                ? null
-                : TerminalToolWindowManager.findWidgetByContent(selectedContent);
-        if (terminalWidget == null) {
+        if (selectedContent == null) {
             showNotification(project, "Open a terminal session before adding a file path", NotificationType.WARNING);
             return;
         }
+
+        TerminalWidget terminalWidget = TerminalToolWindowManager.findWidgetByContent(selectedContent);
 
         String text = relativePaths.stream()
                 .map(path -> "@" + path)
                 .reduce((left, right) -> left + " " + right)
                 .orElse("");
         try {
-            if (!sendToReworkedTerminal(selectedContent, text)) {
+            boolean sentToReworkedTerminal = sendToReworkedTerminal(project, selectedContent, text);
+            if (!sentToReworkedTerminal && terminalWidget == null) {
+                showNotification(project, "Open a terminal session before adding a file path", NotificationType.WARNING);
+                return;
+            }
+            if (!sentToReworkedTerminal) {
                 sendToClassicTerminal(terminalWidget, text);
             }
         } catch (ReflectiveOperationException | UncheckedIOException ex) {
@@ -74,7 +82,13 @@ public class AddToTerminalAction extends AnAction implements DumbAware {
             return;
         }
         if (toolWindow != null) {
-            toolWindow.activate(terminalWidget::requestFocus);
+            toolWindow.activate(() -> {
+                if (terminalWidget != null) {
+                    terminalWidget.requestFocus();
+                } else {
+                    selectedContent.getComponent().requestFocusInWindow();
+                }
+            });
         }
     }
 
@@ -83,18 +97,16 @@ public class AddToTerminalAction extends AnAction implements DumbAware {
      * Reflection keeps the plugin binary compatible with its 2023.2 baseline.
      */
     private static boolean sendToReworkedTerminal(
+            @NotNull Project project,
             @NotNull Content selectedContent,
             @NotNull String text
     ) throws ReflectiveOperationException {
-        Object terminalView = DataManager.getInstance()
-                .getDataContext(selectedContent.getComponent())
-                .getData(TERMINAL_VIEW_KEY);
-        if (terminalView == null) {
-            return false;
-        }
-
         try {
             Class<?> terminalViewClass = Class.forName(TERMINAL_VIEW_CLASS);
+            Object terminalView = findReworkedTerminalView(project, selectedContent);
+            if (terminalView == null) {
+                return false;
+            }
             Method sendText = terminalViewClass.getMethod("sendText", String.class);
             sendText.invoke(terminalView, text);
             return true;
@@ -107,6 +119,41 @@ public class AddToTerminalAction extends AnAction implements DumbAware {
             }
             throw ex;
         }
+    }
+
+    /**
+     * Resolves the view from the tabs manager instead of relying on the outer Content component's
+     * data context. In 2025.3 the TerminalView data provider is installed on an inner panel, so a
+     * data context created for the outer tool-window panel cannot see it.
+     */
+    private static Object findReworkedTerminalView(
+            @NotNull Project project,
+            @NotNull Content selectedContent
+    ) throws ReflectiveOperationException {
+        try {
+            Class<?> tabsManagerClass = Class.forName(TERMINAL_TABS_MANAGER_CLASS);
+            Class<?> tabClass = Class.forName(TERMINAL_TAB_CLASS);
+            Method getInstance = tabsManagerClass.getMethod("getInstance", Project.class);
+            Method getTabs = tabsManagerClass.getMethod("getTabs");
+            Method getContent = tabClass.getMethod("getContent");
+            Method getView = tabClass.getMethod("getView");
+
+            Object tabsManager = getInstance.invoke(null, project);
+            Object tabs = getTabs.invoke(tabsManager);
+            if (tabs instanceof Iterable<?> iterable) {
+                for (Object tab : iterable) {
+                    if (getContent.invoke(tab) == selectedContent) {
+                        return getView.invoke(tab);
+                    }
+                }
+            }
+        } catch (ClassNotFoundException | NoSuchMethodException ex) {
+            // The tabs manager API is absent before the Reworked Terminal was introduced.
+        }
+
+        return DataManager.getInstance()
+                .getDataContext(selectedContent.getComponent())
+                .getData(TERMINAL_VIEW_KEY);
     }
 
     private static void sendToClassicTerminal(
