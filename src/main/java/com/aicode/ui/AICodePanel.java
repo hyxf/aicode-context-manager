@@ -381,7 +381,23 @@ public class AICodePanel extends JPanel implements Disposable {
         removeItem.addActionListener(actionEvent -> removeNodeContext(node));
         menu.add(removeItem);
 
+        if (!data.isDirectory && data.fullRelativePath != null) {
+            JMenuItem copyRelativePathItem = new JMenuItem("Copy Relative Path");
+            copyRelativePathItem.setIcon(AllIcons.Actions.Copy);
+            copyRelativePathItem.addActionListener(actionEvent -> copyRelativePath(data.fullRelativePath));
+            menu.add(copyRelativePathItem);
+        }
+
         menu.show(tree, e.getX(), e.getY());
+    }
+
+    private void copyRelativePath(@NotNull String relativePath) {
+        try {
+            ClipboardService.copyToClipboard(relativePath);
+            showNotification("Copied relative path: " + relativePath, NotificationType.INFORMATION);
+        } catch (Exception ex) {
+            showNotification("Failed to copy relative path: " + ex.getMessage(), NotificationType.ERROR);
+        }
     }
 
     private void addMissingFiles(@NotNull VirtualFile dir) {
