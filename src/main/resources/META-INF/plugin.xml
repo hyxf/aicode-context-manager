@@ -19,6 +19,7 @@
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.terminal</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <notificationGroup
@@ -72,6 +73,11 @@
                     class="com.aicode.action.CopyRelativePathAction"
                     text="Copy Relative Path"
                     description="Copy path relative to the project root"/>
+
+            <action id="com.aicode.action.AddToTerminalAction"
+                    class="com.aicode.action.AddToTerminalAction"
+                    text="Add to Terminal"
+                    description="Insert the selected file path at the terminal cursor"/>
 
             <action id="com.aicode.action.CopyMarkdownAction"
                     class="com.aicode.action.CopyMarkdownAction"
