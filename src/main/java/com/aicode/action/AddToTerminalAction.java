@@ -1,6 +1,7 @@
 package com.aicode.action;
 
 import com.aicode.service.AICodeFileService;
+import com.intellij.ide.DataManager;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
 import com.intellij.notification.Notifications;
@@ -8,6 +9,8 @@ import com.intellij.openapi.actionSystem.ActionUpdateThread;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.CommonDataKeys;
+import com.intellij.openapi.actionSystem.DataKey;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -19,6 +22,8 @@ import org.jetbrains.plugins.terminal.TerminalToolWindowManager;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,6 +31,9 @@ import java.util.List;
  * Inserts selected project paths at the cursor of the currently selected terminal.
  */
 public class AddToTerminalAction extends AnAction implements DumbAware {
+    private static final Logger LOG = Logger.getInstance(AddToTerminalAction.class);
+    private static final String TERMINAL_VIEW_CLASS = "com.intellij.terminal.frontend.view.TerminalView";
+    private static final DataKey<Object> TERMINAL_VIEW_KEY = DataKey.create("TerminalView");
 
     @Override
     public void actionPerformed(@NotNull AnActionEvent e) {
@@ -57,20 +65,61 @@ public class AddToTerminalAction extends AnAction implements DumbAware {
                 .reduce((left, right) -> left + " " + right)
                 .orElse("");
         try {
-            terminalWidget.getTtyConnectorAccessor().executeWithTtyConnector(connector -> {
-                try {
-                    connector.write(text);
-                } catch (IOException ex) {
-                    throw new UncheckedIOException(ex);
-                }
-            });
-        } catch (UncheckedIOException ex) {
+            if (!sendToReworkedTerminal(selectedContent, text)) {
+                sendToClassicTerminal(terminalWidget, text);
+            }
+        } catch (ReflectiveOperationException | UncheckedIOException ex) {
+            LOG.warn("Failed to insert paths into the selected terminal", ex);
             showNotification(project, "Failed to add the file path to Terminal: " + ex.getMessage(), NotificationType.ERROR);
             return;
         }
         if (toolWindow != null) {
             toolWindow.activate(terminalWidget::requestFocus);
         }
+    }
+
+    /**
+     * Uses the public Reworked Terminal API when it is available (2025.3+).
+     * Reflection keeps the plugin binary compatible with its 2023.2 baseline.
+     */
+    private static boolean sendToReworkedTerminal(
+            @NotNull Content selectedContent,
+            @NotNull String text
+    ) throws ReflectiveOperationException {
+        Object terminalView = DataManager.getInstance()
+                .getDataContext(selectedContent.getComponent())
+                .getData(TERMINAL_VIEW_KEY);
+        if (terminalView == null) {
+            return false;
+        }
+
+        try {
+            Class<?> terminalViewClass = Class.forName(TERMINAL_VIEW_CLASS);
+            Method sendText = terminalViewClass.getMethod("sendText", String.class);
+            sendText.invoke(terminalView, text);
+            return true;
+        } catch (ClassNotFoundException ex) {
+            return false;
+        } catch (InvocationTargetException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw ex;
+        }
+    }
+
+    private static void sendToClassicTerminal(
+            @NotNull TerminalWidget terminalWidget,
+            @NotNull String text
+    ) {
+        terminalWidget.getTtyConnectorAccessor().executeWithTtyConnector(connector -> {
+            try {
+                connector.write(text);
+            } catch (IOException ex) {
+                throw new UncheckedIOException(ex);
+            }
+        });
     }
 
     @Override
