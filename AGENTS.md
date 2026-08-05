@@ -86,19 +86,13 @@ PR 必须包含变更目的、关键实现、影响范围和实际执行的验�
    - 当前最新标签；
    - `MAJOR`、`MINOR`、`PATCH` 各自对应的新标签，并请用户选择，推荐项必须说明依据。
 
-4. 获得用户确认后，根据本次提交包含的文件类型执行校验：
+4. 获得用户确认后，运行与改动风险相匹配的测试。正式发版至少执行：
 
-   - 仅修改 `*.md` 文档时，不要求执行 Gradle 构建；至少运行 `git diff --check`，并人工检查文档内容、命令示例和 Markdown 结构。
-   - 只要包含 Java/Kotlin 源码、`src/main/resources/` 资源、`plugin.xml`、Gradle 构建配置、依赖、测试代码或其他可能影响插件产物的文件，就必须执行：
+   ```bash
+   ./gradlew clean build
+   ```
 
-      ```bash
-      ./gradlew clean build
-      ```
-
-   - 同时包含文档和代码时按代码变更处理，不得因为包含 Markdown 文件而跳过构建。
-   - 修改 `sinceBuild`/`untilBuild` 时额外执行 `./gradlew verifyPlugin`，并记录最低支持版本和目标高版本 IDEA 的冒烟测试结果。
-
-   所有适用的校验都必须通过。校验失败时停止发版，不得提交、推送或打标签；跳过不适用的 Gradle 构建时，最终发版报告中必须明确注明“仅文档变更，未执行 Gradle 构建”。
+   修改 `sinceBuild`/`untilBuild` 时额外执行 `./gradlew verifyPlugin`，并记录最低支持版本和目标高版本 IDEA 的冒烟测试结果。测试失败时停止发版，不得提交、推送或打标签。
 5. 只暂存本次已确认的文件，提交后核对提交内容和提交信息：
 
    ```bash
