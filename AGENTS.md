@@ -34,9 +34,13 @@
 统一使用仓库内 Gradle Wrapper：
 
 ```bash
-./gradlew clean build       # 编译、检查、测试并打包
+GRADLE_USER_HOME=/Users/seven/.gradle
+```
+
+```bash
+./gradlew --offline clean build       # 编译、检查、测试并打包
 ./gradlew runIde            # 启动安装了当前插件的沙箱 IDEA
-./gradlew test              # 运行全部自动化测试
+./gradlew --offline test              # 运行全部自动化测试
 ./gradlew verifyPlugin      # 检查 IntelliJ API/二进制兼容性
 ./gradlew buildPlugin       # 输出 build/distributions/*.zip
 ```

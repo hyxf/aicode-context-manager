@@ -120,6 +120,13 @@
                     text="Copy Remote URL"
                     description="Copy the current Git repository origin URL"/>
         </group>
+
+        <action id="com.aicode.action.GitTagReleaseAction"
+                class="com.aicode.action.GitTagReleaseAction"
+                text="Git Tag Release"
+                description="Create and push the next semantic version Git tag">
+            <add-to-group group-id="VcsGroup" anchor="last"/>
+        </action>
     </actions>
 
     <projectListeners>
