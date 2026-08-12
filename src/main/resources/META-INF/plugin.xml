@@ -20,6 +20,7 @@
 
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.terminal</depends>
+    <depends>Git4Idea</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <notificationGroup
@@ -85,6 +86,30 @@
                     description="Export AICode context as Markdown"
                     use-shortcut-of="EditorCopy">
             </action>
+        </group>
+
+        <group id="com.aicode.action.OpenGitRemoteGroup"
+               text="Open Git Remote"
+               popup="true">
+            <add-to-group group-id="CutCopyPasteGroup"
+                          anchor="after"
+                          relative-to-action="AICodeGroup"/>
+            <add-to-group group-id="EditorTabPopupMenu"
+                          anchor="after"
+                          relative-to-action="AICodeGroup"/>
+
+            <action id="com.aicode.action.OpenGitRemoteAction"
+                    class="com.aicode.action.OpenGitRemoteAction"
+                    text="Repository Home"
+                    description="Open the origin repository in a browser"/>
+            <action id="com.aicode.action.OpenGitRemoteBranchAction"
+                    class="com.aicode.action.OpenGitRemoteBranchAction"
+                    text="Current Branch"
+                    description="Open the current branch on the origin repository"/>
+            <action id="com.aicode.action.OpenGitRemoteDirectoryAction"
+                    class="com.aicode.action.OpenGitRemoteDirectoryAction"
+                    text="Selected Directory"
+                    description="Open the selected directory on the current origin branch"/>
         </group>
     </actions>
 

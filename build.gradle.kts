@@ -21,7 +21,7 @@ dependencies {
 intellij {
     version.set("2023.2")
     type.set("IC")
-    plugins.set(listOf("org.jetbrains.plugins.terminal"))
+    plugins.set(listOf("org.jetbrains.plugins.terminal", "Git4Idea"))
 }
 
 tasks {
