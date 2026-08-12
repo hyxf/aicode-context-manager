@@ -2,6 +2,7 @@ package com.aicode.action;
 
 import com.aicode.util.GitRemoteUrlResolver;
 import com.intellij.ide.BrowserUtil;
+import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
 import com.intellij.notification.Notifications;
@@ -12,6 +13,7 @@ import com.intellij.openapi.actionSystem.CommonDataKeys;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.DumbAware;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.VirtualFile;
 import git4idea.repo.GitRepository;
 import org.jetbrains.annotations.NotNull;
@@ -20,6 +22,7 @@ import org.jetbrains.annotations.Nullable;
 /** Opens the project's origin repository, optionally at the current branch or selected directory. */
 public class OpenGitRemoteAction extends AnAction implements DumbAware {
     private static final Logger LOG = Logger.getInstance(OpenGitRemoteAction.class);
+    private static final String HOSTING_PLATFORM_PROPERTY_PREFIX = "aicode.gitRemote.hostingPlatform.";
 
     public enum Target {
         REPOSITORY,
@@ -67,7 +70,13 @@ public class OpenGitRemoteAction extends AnAction implements DumbAware {
                 notify(project, "The selected file is not inside the target Git repository", NotificationType.WARNING);
                 return;
             }
-            String webUrl = GitRemoteUrlResolver.toWebUrl(origin, branch, relativePath);
+            GitRemoteUrlResolver.HostingPlatform platform = branch == null
+                    ? GitRemoteUrlResolver.HostingPlatform.UNKNOWN
+                    : resolveHostingPlatform(project, origin);
+            if (branch != null && platform == null) {
+                return;
+            }
+            String webUrl = GitRemoteUrlResolver.toWebUrl(origin, branch, relativePath, platform);
             if (webUrl == null) {
                 notify(project, "The origin remote URL format is not supported", NotificationType.ERROR);
                 return;
@@ -77,6 +86,56 @@ public class OpenGitRemoteAction extends AnAction implements DumbAware {
             LOG.warn("Failed to resolve the Git remote web URL", ex);
             notify(project, "Failed to open the Git remote: " + safeMessage(ex), NotificationType.ERROR);
         }
+    }
+
+    private static @Nullable GitRemoteUrlResolver.HostingPlatform resolveHostingPlatform(
+            @NotNull Project project,
+            @NotNull String origin
+    ) {
+        GitRemoteUrlResolver.HostingPlatform detected = GitRemoteUrlResolver.detectHostingPlatform(origin);
+        if (detected != GitRemoteUrlResolver.HostingPlatform.UNKNOWN) {
+            return detected;
+        }
+        String host = GitRemoteUrlResolver.getHost(origin);
+        if (host == null || host.isBlank()) {
+            return GitRemoteUrlResolver.HostingPlatform.UNKNOWN;
+        }
+
+        PropertiesComponent properties = PropertiesComponent.getInstance(project);
+        String propertyKey = HOSTING_PLATFORM_PROPERTY_PREFIX + host.toLowerCase(java.util.Locale.ROOT);
+        String saved = properties.getValue(propertyKey);
+        if (saved != null) {
+            try {
+                return GitRemoteUrlResolver.HostingPlatform.valueOf(saved);
+            } catch (IllegalArgumentException ex) {
+                properties.unsetValue(propertyKey);
+            }
+        }
+
+        String[] options = {
+                "GitLab (/-/tree/)",
+                "GitHub / Gitee / Codeup (/tree/)",
+                "Bitbucket (/src/)",
+                Messages.getCancelButton()
+        };
+        int choice = Messages.showDialog(
+                project,
+                "Select the hosting platform used by " + host + ". The choice will be remembered for this project.",
+                "Select Git Hosting Platform",
+                options,
+                0,
+                Messages.getQuestionIcon()
+        );
+        GitRemoteUrlResolver.HostingPlatform selected = switch (choice) {
+            case 0 -> GitRemoteUrlResolver.HostingPlatform.GITLAB;
+            case 1 -> GitRemoteUrlResolver.HostingPlatform.GITHUB;
+            case 2 -> GitRemoteUrlResolver.HostingPlatform.BITBUCKET;
+            default -> null;
+        };
+        if (selected != null) {
+            properties.setValue(propertyKey, selected.name());
+        }
+        return selected;
     }
 
     private static @Nullable String selectedDirectory(

@@ -63,6 +63,15 @@ public final class GitRemoteUrlResolver {
             @Nullable String branch,
             @Nullable String relativePath
     ) {
+        return toWebUrl(rawUrl, branch, relativePath, detectHostingPlatform(rawUrl));
+    }
+
+    public static @Nullable String toWebUrl(
+            @NotNull String rawUrl,
+            @Nullable String branch,
+            @Nullable String relativePath,
+            @NotNull HostingPlatform platform
+    ) {
         URI uri = GitHostingUrlUtil.getUriFromRemoteUrl(rawUrl.trim());
         if (uri == null) {
             return null;
@@ -80,14 +89,46 @@ public final class GitRemoteUrlResolver {
         String authority = retainPort && uri.getPort() >= 0 ? host + ":" + uri.getPort() : host;
         String result = webScheme + "://" + authority + "/" + path;
         if (branch != null && !branch.isBlank()) {
-            String route = host.toLowerCase(Locale.ROOT).contains("gitlab") ? "/-/tree/" : "/tree/";
-            result += route + encodePath(branch);
+            if (platform == HostingPlatform.UNKNOWN) {
+                return null;
+            }
+            result += platform.getTreeRoute() + encodePath(branch);
             String cleanPath = relativePath == null ? "" : trimSlashes(relativePath.replace('\\', '/'));
             if (!cleanPath.isBlank()) {
                 result += "/" + encodePath(cleanPath);
             }
         }
         return result;
+    }
+
+    public static @NotNull HostingPlatform detectHostingPlatform(@NotNull String rawUrl) {
+        URI uri = GitHostingUrlUtil.getUriFromRemoteUrl(rawUrl.trim());
+        String host = uri == null ? null : uri.getHost();
+        if (host == null) {
+            return HostingPlatform.UNKNOWN;
+        }
+        String normalizedHost = host.toLowerCase(Locale.ROOT);
+        if (normalizedHost.contains("gitlab")) {
+            return HostingPlatform.GITLAB;
+        }
+        if (normalizedHost.contains("bitbucket")) {
+            return HostingPlatform.BITBUCKET;
+        }
+        if (normalizedHost.contains("github")) {
+            return HostingPlatform.GITHUB;
+        }
+        if (normalizedHost.contains("gitee")) {
+            return HostingPlatform.GITEE;
+        }
+        if (normalizedHost.contains("codeup")) {
+            return HostingPlatform.CODEUP;
+        }
+        return HostingPlatform.UNKNOWN;
+    }
+
+    public static @Nullable String getHost(@NotNull String rawUrl) {
+        URI uri = GitHostingUrlUtil.getUriFromRemoteUrl(rawUrl.trim());
+        return uri == null ? null : uri.getHost();
     }
 
     private static @NotNull String encodePath(@NotNull String value) {
@@ -99,5 +140,24 @@ public final class GitRemoteUrlResolver {
 
     private static @NotNull String trimSlashes(@NotNull String value) {
         return value.replaceAll("^/+|/+$", "");
+    }
+
+    public enum HostingPlatform {
+        GITHUB("/tree/"),
+        GITLAB("/-/tree/"),
+        GITEE("/tree/"),
+        CODEUP("/tree/"),
+        BITBUCKET("/src/"),
+        UNKNOWN("");
+
+        private final String treeRoute;
+
+        HostingPlatform(@NotNull String treeRoute) {
+            this.treeRoute = treeRoute;
+        }
+
+        public @NotNull String getTreeRoute() {
+            return treeRoute;
+        }
     }
 }
