@@ -72,12 +72,22 @@ public final class GitRemoteUrlResolver {
             @Nullable String relativePath,
             @NotNull HostingPlatform platform
     ) {
+        return toWebUrl(rawUrl, branch, relativePath, platform, PathType.DIRECTORY);
+    }
+
+    public static @Nullable String toWebUrl(
+            @NotNull String rawUrl,
+            @Nullable String branch,
+            @Nullable String relativePath,
+            @NotNull HostingPlatform platform,
+            @NotNull PathType pathType
+    ) {
         URI uri = GitHostingUrlUtil.getUriFromRemoteUrl(rawUrl.trim());
         if (uri == null) {
             return null;
         }
         String host = uri.getHost();
-        String path = trimSlashes(uri.getPath() == null ? "" : uri.getPath());
+        String path = normalizeRepositoryPath(uri.getPath());
         if (host == null || host.isBlank() || path.isBlank()) {
             return null;
         }
@@ -92,7 +102,7 @@ public final class GitRemoteUrlResolver {
             if (platform == HostingPlatform.UNKNOWN) {
                 return null;
             }
-            result += platform.getTreeRoute() + encodePath(branch);
+            result += platform.getRoute(pathType) + encodePath(branch);
             String cleanPath = relativePath == null ? "" : trimSlashes(relativePath.replace('\\', '/'));
             if (!cleanPath.isBlank()) {
                 result += "/" + encodePath(cleanPath);
@@ -142,22 +152,40 @@ public final class GitRemoteUrlResolver {
         return value.replaceAll("^/+|/+$", "");
     }
 
+    private static @NotNull String normalizeRepositoryPath(@Nullable String path) {
+        String normalized = trimSlashes(path == null ? "" : path);
+        return normalized.endsWith(".git")
+                ? normalized.substring(0, normalized.length() - ".git".length())
+                : normalized;
+    }
+
     public enum HostingPlatform {
-        GITHUB("/tree/"),
-        GITLAB("/-/tree/"),
-        GITEE("/tree/"),
-        CODEUP("/tree/"),
-        BITBUCKET("/src/"),
-        UNKNOWN("");
+        GITHUB("/tree/", "/blob/"),
+        GITLAB("/-/tree/", "/-/blob/"),
+        GITEE("/tree/", "/blob/"),
+        CODEUP("/tree/", "/blob/"),
+        BITBUCKET("/src/", "/src/"),
+        UNKNOWN("", "");
 
         private final String treeRoute;
+        private final String blobRoute;
 
-        HostingPlatform(@NotNull String treeRoute) {
+        HostingPlatform(@NotNull String treeRoute, @NotNull String blobRoute) {
             this.treeRoute = treeRoute;
+            this.blobRoute = blobRoute;
         }
 
         public @NotNull String getTreeRoute() {
             return treeRoute;
         }
+
+        public @NotNull String getRoute(@NotNull PathType pathType) {
+            return pathType == PathType.FILE ? blobRoute : treeRoute;
+        }
+    }
+
+    public enum PathType {
+        DIRECTORY,
+        FILE
     }
 }

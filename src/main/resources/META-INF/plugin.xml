@@ -110,6 +110,10 @@
                     class="com.aicode.action.OpenGitRemoteDirectoryAction"
                     text="Selected Directory"
                     description="Open the selected directory on the current origin branch"/>
+            <action id="com.aicode.action.OpenGitRemoteFileAction"
+                    class="com.aicode.action.OpenGitRemoteFileAction"
+                    text="Selected File"
+                    description="Open the selected file on the current origin branch"/>
         </group>
     </actions>
 

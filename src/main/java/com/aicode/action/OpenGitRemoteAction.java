@@ -19,7 +19,7 @@ import git4idea.repo.GitRepository;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-/** Opens the project's origin repository, optionally at the current branch or selected directory. */
+/** Opens the project's origin repository, current branch, or a selected path. */
 public class OpenGitRemoteAction extends AnAction implements DumbAware {
     private static final Logger LOG = Logger.getInstance(OpenGitRemoteAction.class);
     private static final String HOSTING_PLATFORM_PROPERTY_PREFIX = "aicode.gitRemote.hostingPlatform.";
@@ -27,7 +27,8 @@ public class OpenGitRemoteAction extends AnAction implements DumbAware {
     public enum Target {
         REPOSITORY,
         BRANCH,
-        DIRECTORY
+        DIRECTORY,
+        FILE
     }
 
     private final Target target;
@@ -63,11 +64,17 @@ public class OpenGitRemoteAction extends AnAction implements DumbAware {
             if (target != Target.REPOSITORY && branch == null) {
                 notify(project, "HEAD is detached; opening the repository home page", NotificationType.WARNING);
             }
-            String relativePath = target == Target.DIRECTORY && branch != null
-                    ? selectedDirectory(repository, selected)
-                    : null;
-            if (target == Target.DIRECTORY && branch != null && relativePath == null) {
-                notify(project, "The selected file is not inside the target Git repository", NotificationType.WARNING);
+            String relativePath = branch == null ? null : switch (target) {
+                case DIRECTORY -> selectedDirectory(repository, selected);
+                case FILE -> selectedFile(repository, selected);
+                default -> null;
+            };
+            if ((target == Target.DIRECTORY || target == Target.FILE)
+                    && branch != null && relativePath == null) {
+                String selectedPathType = target == Target.DIRECTORY ? "directory" : "file";
+                notify(project,
+                        "The selected " + selectedPathType + " is not inside the target Git repository",
+                        NotificationType.WARNING);
                 return;
             }
             GitRemoteUrlResolver.HostingPlatform platform = branch == null
@@ -76,7 +83,10 @@ public class OpenGitRemoteAction extends AnAction implements DumbAware {
             if (branch != null && platform == null) {
                 return;
             }
-            String webUrl = GitRemoteUrlResolver.toWebUrl(origin, branch, relativePath, platform);
+            GitRemoteUrlResolver.PathType pathType = target == Target.FILE
+                    ? GitRemoteUrlResolver.PathType.FILE
+                    : GitRemoteUrlResolver.PathType.DIRECTORY;
+            String webUrl = GitRemoteUrlResolver.toWebUrl(origin, branch, relativePath, platform, pathType);
             if (webUrl == null) {
                 notify(project, "The origin remote URL format is not supported", NotificationType.ERROR);
                 return;
@@ -157,6 +167,20 @@ public class OpenGitRemoteAction extends AnAction implements DumbAware {
         return relative;
     }
 
+    private static @Nullable String selectedFile(
+            @NotNull GitRepository repository,
+            @Nullable VirtualFile selected
+    ) {
+        if (selected == null || selected.isDirectory()) {
+            return null;
+        }
+        return com.intellij.openapi.vfs.VfsUtilCore.getRelativePath(
+                selected,
+                repository.getRoot(),
+                '/'
+        );
+    }
+
     @Override
     public void update(@NotNull AnActionEvent e) {
         Project project = e.getProject();
@@ -170,6 +194,9 @@ public class OpenGitRemoteAction extends AnAction implements DumbAware {
             }
             if (available && target == Target.DIRECTORY) {
                 available = selectedDirectory(repository, selected) != null;
+            }
+            if (available && target == Target.FILE) {
+                available = selectedFile(repository, selected) != null;
             }
         }
         e.getPresentation().setEnabledAndVisible(available);
