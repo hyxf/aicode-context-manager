@@ -90,6 +90,7 @@
 
         <group id="com.aicode.action.OpenGitRemoteGroup"
                text="Open Git Remote"
+               icon="/icons/git.svg"
                popup="true">
             <add-to-group group-id="CutCopyPasteGroup"
                           anchor="after"
