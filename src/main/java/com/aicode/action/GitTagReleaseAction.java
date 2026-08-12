@@ -319,9 +319,13 @@ public final class GitTagReleaseAction extends AnAction implements DumbAware {
     @Override
     public void update(@NotNull AnActionEvent event) {
         Project project = event.getProject();
-        boolean available = project != null
+        boolean hasRepository = project != null
                 && !GitRepositoryManager.getInstance(project).getRepositories().isEmpty();
-        event.getPresentation().setEnabledAndVisible(available);
+        event.getPresentation().setVisible(project != null);
+        event.getPresentation().setEnabled(hasRepository);
+        event.getPresentation().setDescription(hasRepository
+                ? "Create and push the next semantic version Git tag"
+                : "No Git repository was detected for this project");
     }
 
     @Override
