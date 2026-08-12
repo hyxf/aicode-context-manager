@@ -114,6 +114,10 @@
                     class="com.aicode.action.OpenGitRemoteFileAction"
                     text="Selected File"
                     description="Open the selected file on the current origin branch"/>
+            <action id="com.aicode.action.CopyGitRemoteUrlAction"
+                    class="com.aicode.action.CopyGitRemoteUrlAction"
+                    text="Copy Remote URL"
+                    description="Copy the current Git repository origin URL"/>
         </group>
     </actions>
 
