@@ -120,6 +120,10 @@
                     class="com.aicode.action.CopyGitRemoteUrlAction"
                     text="Copy Remote URL"
                     description="Copy the current Git repository origin URL"/>
+            <action id="com.aicode.action.CreateChangelogAction"
+                    class="com.aicode.action.CreateChangelogAction"
+                    text="Create or Update CHANGELOG.md..."
+                    description="Create or update CHANGELOG.md from local Git tags and commits"/>
             <action id="com.aicode.action.GitTagReleaseAction"
                     class="com.aicode.action.GitTagReleaseAction"
                     text="Create Release Tag..."
