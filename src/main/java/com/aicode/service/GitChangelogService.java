@@ -28,6 +28,7 @@ public final class GitChangelogService {
     public @NotNull ChangelogData read(@NotNull Project project, @NotNull GitRepository repository)
             throws VcsException {
         List<Tag> tags = readTags(project, repository);
+        validateLinearReleaseHistory(project, repository, tags);
         List<Release> releases = new ArrayList<>();
 
         String latestTag = tags.isEmpty() ? null : tags.get(tags.size() - 1).name();
@@ -46,6 +47,29 @@ public final class GitChangelogService {
             ));
         }
         return new ChangelogData(List.copyOf(releases));
+    }
+
+    private void validateLinearReleaseHistory(
+            @NotNull Project project,
+            @NotNull GitRepository repository,
+            @NotNull List<Tag> tags
+    ) throws VcsException {
+        for (int index = 1; index < tags.size(); index++) {
+            Tag previous = tags.get(index - 1);
+            Tag current = tags.get(index);
+            GitLineHandler handler = new GitLineHandler(project, repository.getRoot(), GitCommand.MERGE_BASE);
+            handler.addParameters("--is-ancestor", previous.name(), current.name());
+            GitCommandResult result = git.runCommand(handler);
+            if (result.success()) {
+                continue;
+            }
+            if (result.getExitCode() == 1) {
+                throw new VcsException("Cannot generate an accurate changelog because "
+                        + previous.name() + " is not an ancestor of " + current.name()
+                        + ". The semantic-version tags do not form a linear release history.");
+            }
+            result.throwOnError();
+        }
     }
 
     private @NotNull List<Tag> readTags(@NotNull Project project, @NotNull GitRepository repository)

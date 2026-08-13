@@ -100,8 +100,15 @@ public final class CreateChangelogAction extends AnAction implements DumbAware {
             return;
         }
         String existingContent = existingDocument == null ? null : existingDocument.getText();
-        boolean replacingUnmanaged = existingContent != null
-                && !ChangelogBuilder.hasManagedSection(existingContent);
+        boolean replacingUnmanaged;
+        try {
+            replacingUnmanaged = existingContent != null
+                    && !ChangelogBuilder.hasManagedSection(existingContent);
+        } catch (IllegalArgumentException exception) {
+            notify(project, exception.getMessage() + ". Fix the markers and generate it again.",
+                    NotificationType.ERROR);
+            return;
+        }
         String content;
         if (existingFile == null || replacingUnmanaged) {
             content = ChangelogBuilder.create(data);

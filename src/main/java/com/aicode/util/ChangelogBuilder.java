@@ -36,15 +36,25 @@ public final class ChangelogBuilder {
     public static boolean hasManagedSection(@NotNull String existing) {
         int start = existing.indexOf(START_MARKER);
         int end = existing.indexOf(END_MARKER);
-        return start >= 0 && end > start;
+        if (start < 0 && end < 0) {
+            return false;
+        }
+        if (start < 0 || end < 0 || end < start
+                || existing.indexOf(START_MARKER, start + START_MARKER.length()) >= 0
+                || existing.indexOf(END_MARKER, end + END_MARKER.length()) >= 0) {
+            throw new IllegalArgumentException(
+                    "CHANGELOG.md must contain exactly one ordered pair of AICode changelog markers"
+            );
+        }
+        return true;
     }
 
     public static @NotNull String update(@NotNull String existing, @NotNull ChangelogData data) {
+        if (!hasManagedSection(existing)) {
+            throw new IllegalArgumentException("The changelog does not contain a managed section");
+        }
         int start = existing.indexOf(START_MARKER);
         int end = existing.indexOf(END_MARKER);
-        if (start < 0 || end <= start) {
-            throw new IllegalArgumentException("The changelog does not contain a valid managed section");
-        }
         int suffixStart = end + END_MARKER.length();
         return existing.substring(0, start) + managedSection(data) + existing.substring(suffixStart);
     }
@@ -72,9 +82,17 @@ public final class ChangelogBuilder {
         categories.forEach((category, descriptions) -> {
             if (!descriptions.isEmpty()) {
                 markdown.append("\n### ").append(category).append("\n\n");
-                descriptions.forEach(description -> markdown.append("- ").append(description).append('\n'));
+                descriptions.forEach(description -> markdown.append("- ")
+                        .append(escapeReservedMarkers(description))
+                        .append('\n'));
             }
         });
+    }
+
+    private static @NotNull String escapeReservedMarkers(@NotNull String text) {
+        return text
+                .replace(START_MARKER, "&lt;!-- aicode-changelog:start --&gt;")
+                .replace(END_MARKER, "&lt;!-- aicode-changelog:end --&gt;");
     }
 
     static @NotNull ParsedCommit parse(@NotNull String subject) {
