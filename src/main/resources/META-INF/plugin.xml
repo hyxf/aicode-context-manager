@@ -33,17 +33,17 @@
                 id="AICode Context"
                 anchor="right"
                 icon="/icons/aicode.svg"
-                factoryClass="com.aicode.ui.AICodeToolWindowFactory"/>
+                factoryClass="com.aicode.feature.ai.ui.AICodeToolWindowFactory"/>
 
         <!-- Project Service -->
         <projectService
-                serviceImplementation="com.aicode.service.AICodeFileService"/>
+                serviceImplementation="com.aicode.feature.ai.service.AICodeFileService"/>
 
         <!-- Icon Provider -->
-        <iconProvider implementation="com.aicode.provider.AICodeIconProvider" order="first"/>
+        <iconProvider implementation="com.aicode.feature.ai.provider.AICodeIconProvider" order="first"/>
 
         <!-- Editor Notification Provider -->
-        <editorNotificationProvider implementation="com.aicode.provider.AICodeEditorNotificationProvider"/>
+        <editorNotificationProvider implementation="com.aicode.feature.ai.provider.AICodeEditorNotificationProvider"/>
     </extensions>
 
     <actions>
@@ -55,7 +55,7 @@
             <add-to-group group-id="EditorTabPopupMenu" anchor="first"/>
 
             <action id="com.aicode.action.AddToAICodeAction"
-                    class="com.aicode.action.AddToAICodeAction"
+                    class="com.aicode.feature.ai.action.AddToAICodeAction"
                     text="Add to AICode"
                     description="Add file to AICode context">
                 <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift Z"/>
@@ -63,7 +63,7 @@
             </action>
 
             <action id="com.aicode.action.RemoveFromAICodeAction"
-                    class="com.aicode.action.RemoveFromAICodeAction"
+                    class="com.aicode.feature.ai.action.RemoveFromAICodeAction"
                     text="Remove from AICode"
                     description="Remove file from AICode context">
                 <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift X"/>
@@ -71,17 +71,17 @@
             </action>
 
             <action id="com.aicode.action.CopyRelativePathAction"
-                    class="com.aicode.action.CopyRelativePathAction"
+                    class="com.aicode.feature.ai.action.CopyRelativePathAction"
                     text="Copy Relative Path"
                     description="Copy path relative to the project root"/>
 
             <action id="com.aicode.action.AddToTerminalAction"
-                    class="com.aicode.action.AddToTerminalAction"
+                    class="com.aicode.feature.ai.action.AddToTerminalAction"
                     text="Add to Terminal"
                     description="Insert the selected file path at the terminal cursor"/>
 
             <action id="com.aicode.action.CopyMarkdownAction"
-                    class="com.aicode.action.CopyMarkdownAction"
+                    class="com.aicode.feature.ai.action.CopyMarkdownAction"
                     text="Copy as Markdown"
                     description="Export AICode context as Markdown"
                     use-shortcut-of="EditorCopy">
@@ -100,39 +100,39 @@
                           relative-to-action="AICodeGroup"/>
 
             <action id="com.aicode.action.OpenGitRemoteAction"
-                    class="com.aicode.action.OpenGitRemoteAction"
+                    class="com.aicode.feature.git.action.OpenGitRemoteAction"
                     text="Repository Home"
                     description="Open the origin repository in a browser"/>
             <action id="com.aicode.action.OpenGitRemoteBranchAction"
-                    class="com.aicode.action.OpenGitRemoteBranchAction"
+                    class="com.aicode.feature.git.action.OpenGitRemoteBranchAction"
                     text="Current Branch"
                     description="Open the current branch on the origin repository"/>
             <action id="com.aicode.action.OpenGitRemoteDirectoryAction"
-                    class="com.aicode.action.OpenGitRemoteDirectoryAction"
+                    class="com.aicode.feature.git.action.OpenGitRemoteDirectoryAction"
                     text="Selected Directory"
                     description="Open the selected directory on the current origin branch"/>
             <action id="com.aicode.action.OpenGitRemoteFileAction"
-                    class="com.aicode.action.OpenGitRemoteFileAction"
+                    class="com.aicode.feature.git.action.OpenGitRemoteFileAction"
                     text="Selected File"
                     description="Open the selected file on the current origin branch"/>
             <separator/>
             <action id="com.aicode.action.CopyGitRemoteUrlAction"
-                    class="com.aicode.action.CopyGitRemoteUrlAction"
+                    class="com.aicode.feature.git.action.CopyGitRemoteUrlAction"
                     text="Copy Remote URL"
                     description="Copy the current Git repository origin URL"/>
             <action id="com.aicode.action.CreateChangelogAction"
-                    class="com.aicode.action.CreateChangelogAction"
+                    class="com.aicode.feature.git.action.CreateChangelogAction"
                     text="Create or Update CHANGELOG.md..."
                     description="Create or update CHANGELOG.md from local Git tags and commits"/>
             <action id="com.aicode.action.GitTagReleaseAction"
-                    class="com.aicode.action.GitTagReleaseAction"
+                    class="com.aicode.feature.git.action.GitTagReleaseAction"
                     text="Create Release Tag..."
                     description="Create and push the next semantic version Git tag"/>
         </group>
     </actions>
 
     <projectListeners>
-        <listener class="com.aicode.listener.AICodeFileListener"
+        <listener class="com.aicode.feature.ai.listener.AICodeFileListener"
                   topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
     </projectListeners>
 </idea-plugin>

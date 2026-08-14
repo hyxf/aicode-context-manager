@@ -1,0 +1,24 @@
+package com.aicode.feature.git.service;
+
+import org.junit.Test;
+
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
+
+public class GitTagServiceTest {
+    @Test
+    public void matchesOnlyTheExactRemoteTagRef() {
+        assertTrue(GitTagService.hasRef(
+                "0123456789abcdef\trefs/tags/v1.6.4",
+                "refs/tags/v1.6.4"
+        ));
+        assertFalse(GitTagService.hasRef(
+                "0123456789abcdef\trefs/tags/v1.6.40",
+                "refs/tags/v1.6.4"
+        ));
+        assertFalse(GitTagService.hasRef(
+                "0123456789abcdef\trefs/tags/v1.6.4^{}",
+                "refs/tags/v1.6.4"
+        ));
+    }
+}
