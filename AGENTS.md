@@ -6,9 +6,9 @@
 
 ## 目录与模块职责
 
-- `src/main/java/com/aicode/action/`：Project View 和编辑器菜单动作；只负责参数校验与流程编排。
-- `service/AICodeFileService.java`：配置读写、分组操作、路径缓存与变更通知的唯一入口。
-- `model/AICodeConfig.java`：`.aicode.json` 的数据模型；修改字段时必须考虑旧版数组格式迁移。
+- `src/main/kotlin/com/aicode/feature/*/action/`：Project View 和编辑器菜单动作；只负责参数校验与流程编排。
+- `service/AICodeFileService.kt`：配置读写、分组操作、路径缓存与变更通知的唯一入口。
+- `model/AICodeConfig.kt`：`.aicode.json` 的数据模型；修改字段时必须考虑旧版数组格式迁移。
 - `listener/`：监听 VFS 创建、删除、移动、重命名和内容变化。
 - `provider/`：文件图标及编辑器顶部通知。
 - `ui/`：Tool Window、分组选择和文件树交互。
@@ -55,7 +55,7 @@ Java 使用 4 空格缩进；类名使用 PascalCase，方法和变量使用 cam
 
 ## 测试要求
 
-当前仓库没有 `src/test` 和覆盖率门槛。新增可测试逻辑时，在 `src/test/java/com/aicode/` 下建立与生产代码一致的包结构，测试类命名为 `*Test`，测试方法描述行为与结果。纯逻辑优先覆盖 `AICodeConfig`、`MarkdownBuilder` 和 `CodeLanguageResolver`；涉及 Project、VirtualFile、Action 或 Tool Window 的行为应使用 IntelliJ Platform test fixture，而不是模拟 SDK 内部实现。
+当前仓库没有覆盖率门槛。新增可测试逻辑时，在 `src/test/kotlin/com/aicode/` 下建立与生产代码一致的包结构，测试类命名为 `*Test`，测试方法描述行为与结果。纯逻辑优先覆盖 `AICodeConfig`、`MarkdownBuilder` 和 `CodeLanguageResolver`；涉及 Project、VirtualFile、Action 或 Tool Window 的行为应使用 IntelliJ Platform test fixture，而不是模拟 SDK 内部实现。
 
 每次功能变更至少验证：正常路径、空分组、重复文件、缺失文件、旧配置迁移、非项目文件、二进制/忽略文件，以及 VFS 重命名或移动。若引入测试框架，显式添加 `testImplementation` 依赖并在 PR 中说明。
 
