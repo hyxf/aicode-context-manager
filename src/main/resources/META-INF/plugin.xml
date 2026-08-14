@@ -129,6 +129,20 @@
                     text="Create Release Tag..."
                     description="Create and push the next semantic version Git tag"/>
         </group>
+
+        <group id="com.aicode.action.GitToolsMainMenuGroup"
+               text="Git Tools"
+               icon="/icons/git.svg"
+               popup="true">
+            <add-to-group group-id="Git.MainMenu" anchor="last"/>
+
+            <reference ref="com.aicode.action.OpenGitRemoteAction"/>
+            <reference ref="com.aicode.action.OpenGitRemoteBranchAction"/>
+            <separator/>
+            <reference ref="com.aicode.action.CopyGitRemoteUrlAction"/>
+            <reference ref="com.aicode.action.CreateChangelogAction"/>
+            <reference ref="com.aicode.action.GitTagReleaseAction"/>
+        </group>
     </actions>
 
     <projectListeners>
