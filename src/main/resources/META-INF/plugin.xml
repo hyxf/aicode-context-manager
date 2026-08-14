@@ -47,7 +47,7 @@
     </extensions>
 
     <actions>
-        <group id="AICodeGroup" text="AICode" popup="true" icon="icons/aicode.svg">
+        <group id="AICodeGroup" text="AI Code" popup="true" icon="icons/aicode.svg">
             <!-- 1. Project View: Keep in CutCopyPaste group at the bottom -->
             <add-to-group group-id="CutCopyPasteGroup" anchor="last"/>
 
