@@ -103,7 +103,7 @@
                     class="com.aicode.feature.git.action.OpenGitRemoteAction"
                     text="Repository Home"
                     description="Open the origin repository in a browser">
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift H"/>
+                <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="shift meta H"/>
             </action>
             <action id="com.aicode.action.OpenGitRemoteBranchAction"
                     class="com.aicode.feature.git.action.OpenGitRemoteBranchAction"
@@ -130,7 +130,7 @@
                     class="com.aicode.feature.git.action.GitTagReleaseAction"
                     text="Create Release Tag..."
                     description="Create and push the next semantic version Git tag">
-                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift T"/>
+                <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="shift meta J"/>
             </action>
         </group>
 
