@@ -108,7 +108,9 @@
             <action id="com.aicode.action.OpenGitRemoteBranchAction"
                     class="com.aicode.feature.git.action.OpenGitRemoteBranchAction"
                     text="Current Branch"
-                    description="Open the current branch on the origin repository"/>
+                    description="Open the current branch on the origin repository">
+                <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="shift meta B"/>
+            </action>
             <action id="com.aicode.action.OpenGitRemoteDirectoryAction"
                     class="com.aicode.feature.git.action.OpenGitRemoteDirectoryAction"
                     text="Selected Directory"
