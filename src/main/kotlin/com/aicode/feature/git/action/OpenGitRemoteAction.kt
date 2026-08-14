@@ -3,6 +3,7 @@ package com.aicode.feature.git.action
 import com.aicode.feature.git.util.GitRemoteUrlResolver
 import com.aicode.feature.git.util.GitRemoteUrlResolver.HostingPlatform
 import com.aicode.feature.git.util.GitRemoteUrlResolver.PathType
+import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.notification.*
@@ -17,7 +18,7 @@ import git4idea.repo.GitRepository
 import java.util.Locale
 
 open class OpenGitRemoteAction protected constructor(private val target: Target) :
-    AnAction(), DumbAware {
+    AnAction(null, null, AllIcons.General.Web), DumbAware {
     constructor() : this(Target.REPOSITORY)
 
     enum class Target {
