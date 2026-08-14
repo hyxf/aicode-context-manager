@@ -102,7 +102,9 @@
             <action id="com.aicode.action.OpenGitRemoteAction"
                     class="com.aicode.feature.git.action.OpenGitRemoteAction"
                     text="Repository Home"
-                    description="Open the origin repository in a browser"/>
+                    description="Open the origin repository in a browser">
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift H"/>
+            </action>
             <action id="com.aicode.action.OpenGitRemoteBranchAction"
                     class="com.aicode.feature.git.action.OpenGitRemoteBranchAction"
                     text="Current Branch"
@@ -127,7 +129,9 @@
             <action id="com.aicode.action.GitTagReleaseAction"
                     class="com.aicode.feature.git.action.GitTagReleaseAction"
                     text="Create Release Tag..."
-                    description="Create and push the next semantic version Git tag"/>
+                    description="Create and push the next semantic version Git tag">
+                <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift T"/>
+            </action>
         </group>
 
         <group id="com.aicode.action.GitToolsMainMenuGroup"
