@@ -5,7 +5,10 @@ import com.aicode.feature.git.service.GitTagService.PublishResult;
 import com.aicode.feature.git.service.GitTagVersionService;
 import com.aicode.feature.git.service.GitTagVersionService.VersionCandidates;
 import com.aicode.feature.git.ui.GitTagVersionDialog;
+import com.aicode.feature.git.util.GitRemoteUrlResolver;
+import com.intellij.ide.BrowserUtil;
 import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationAction;
 import com.intellij.notification.NotificationType;
 import com.intellij.notification.Notifications;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
@@ -215,11 +218,18 @@ public final class GitTagReleaseAction extends AnAction implements DumbAware {
             @NotNull PublishResult result
     ) {
         switch (result.status()) {
-            case SUCCESS -> notify(
-                    project,
-                    "Created and pushed Git tag " + tagName + " to " + remote.getName() + ".",
-                    NotificationType.INFORMATION
-            );
+            case SUCCESS -> {
+                String remoteUrl = remote.getFirstUrl();
+                String repositoryUrl = remoteUrl == null
+                        ? null
+                        : GitRemoteUrlResolver.toWebUrl(remoteUrl, null, null);
+                notify(
+                        project,
+                        "Created and pushed Git tag " + tagName + " to " + remote.getName() + ".",
+                        NotificationType.INFORMATION,
+                        repositoryUrl
+                );
+            }
             case PUSH_FAILED -> notify(
                     project,
                     "Tag " + tagName + " was created locally, but push did not report success. "
@@ -347,17 +357,33 @@ public final class GitTagReleaseAction extends AnAction implements DumbAware {
             @NotNull String message,
             @NotNull NotificationType type
     ) {
+        notify(project, message, type, null);
+    }
+
+    private static void notify(
+            @NotNull Project project,
+            @NotNull String message,
+            @NotNull NotificationType type,
+            @Nullable String repositoryUrl
+    ) {
         if (project.isDisposed()) {
             return;
         }
         ApplicationManager.getApplication().invokeLater(() -> {
             if (!project.isDisposed()) {
-                Notifications.Bus.notify(new Notification(
+                Notification notification = new Notification(
                         "AICode",
                         "Git Tag Release",
                         message,
                         type
-                ), project);
+                );
+                if (repositoryUrl != null) {
+                    notification.addAction(NotificationAction.createSimple(
+                            "Open Repository",
+                            () -> BrowserUtil.browse(repositoryUrl)
+                    ));
+                }
+                Notifications.Bus.notify(notification, project);
             }
         });
     }
