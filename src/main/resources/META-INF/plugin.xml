@@ -21,6 +21,7 @@
     <depends>com.intellij.modules.platform</depends>
     <depends>org.jetbrains.plugins.terminal</depends>
     <depends>Git4Idea</depends>
+    <depends>com.intellij.gradle</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <notificationGroup
@@ -149,6 +150,13 @@
             <reference ref="com.aicode.action.CreateChangelogAction"/>
             <reference ref="com.aicode.action.GitTagReleaseAction"/>
         </group>
+
+        <action id="com.aicode.feature.gradle.action.ExportGradleDependenciesAction"
+                class="com.aicode.feature.gradle.action.ExportGradleDependenciesAction"
+                text="Export Gradle Dependencies to Local Maven Repository..."
+                description="Export resolved Gradle dependencies as a local Maven repository">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
     </actions>
 
     <projectListeners>
