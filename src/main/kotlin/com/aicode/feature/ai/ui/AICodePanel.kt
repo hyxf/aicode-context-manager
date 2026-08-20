@@ -5,6 +5,8 @@ import com.aicode.feature.ai.icons.AICodeIcons
 import com.aicode.feature.ai.service.AICodeFileService
 import com.aicode.feature.ai.settings.AICodeIgnoreSettings
 import com.aicode.feature.ai.util.MarkdownBuilder
+import com.aicode.feature.git.service.GitContextDiffService
+import com.aicode.feature.git.ui.GitContextDiffDialog
 import com.intellij.icons.AllIcons
 import com.intellij.ide.CommonActionsManager
 import com.intellij.ide.TreeExpander
@@ -13,6 +15,9 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.*
 import com.intellij.openapi.actionSystem.ex.ComboBoxAction
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.progress.ProgressIndicator
+import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.*
@@ -21,6 +26,7 @@ import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.treeStructure.Tree
 import com.intellij.util.ui.tree.TreeUtil
+import git4idea.repo.GitRepositoryManager
 import java.awt.BorderLayout
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
@@ -127,11 +133,72 @@ class AICodePanel(private val project: Project) : JPanel(), Disposable {
                 override fun getActionUpdateThread() = ActionUpdateThread.BGT
             }
         )
+        group.add(
+            object : AnAction(
+                "Compare Context Branches",
+                "Compare context files between Git branches",
+                AllIcons.Actions.Diff,
+            ) {
+                override fun actionPerformed(e: AnActionEvent) {
+                    showGitContextDiff()
+                }
+
+                override fun update(e: AnActionEvent) {
+                    e.presentation.isEnabledAndVisible = findGitRepository() != null
+                }
+
+                override fun getActionUpdateThread() = ActionUpdateThread.BGT
+            }
+        )
         return ActionManager.getInstance()
             .createActionToolbar("AICodeToolbar", group, true)
             .apply { targetComponent = this@AICodePanel }
             .component
     }
+
+    private fun showGitContextDiff() {
+        val repository = findGitRepository() ?: return
+        val paths = service().readFilePaths()
+        object : Task.Backgroundable(project, "Loading Git branches", false) {
+            private var currentBranch: String? = null
+            private var branches: List<String> = emptyList()
+            private var error: String? = null
+
+            override fun run(indicator: ProgressIndicator) {
+                try {
+                    repository.update()
+                    currentBranch = repository.currentBranchName
+                    branches = GitContextDiffService().getBranchNames(repository)
+                } catch (ex: ProcessCanceledException) {
+                    throw ex
+                } catch (ex: Exception) {
+                    error = ex.message?.takeIf { it.isNotBlank() } ?: "Unexpected Git error"
+                }
+            }
+
+            override fun onSuccess() {
+                if (project.isDisposed) return
+                error?.let {
+                    show("Failed to load Git branches: $it", NotificationType.ERROR)
+                    return
+                }
+                val branch = currentBranch
+                if (branch.isNullOrBlank()) {
+                    show(
+                        "Cannot compare branches while Git HEAD is detached.",
+                        NotificationType.WARNING,
+                    )
+                    return
+                }
+                GitContextDiffDialog(project, repository, branch, branches, paths).show()
+            }
+        }.queue()
+    }
+
+    private fun findGitRepository() =
+        project.baseDir?.let {
+            GitRepositoryManager.getInstance(project).getRepositoryForFileQuick(it)
+        }
 
     private fun simple(text: String, description: String, icon: Icon?, run: () -> Unit) =
         object : AnAction(text, description, icon) {
