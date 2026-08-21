@@ -22,6 +22,7 @@ import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.ComponentWithBrowseButton
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.ValidationInfo
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.TextFieldWithAutoCompletion
 import com.intellij.ui.JBColor
 import com.intellij.ui.DocumentAdapter
@@ -292,7 +293,7 @@ class GitContextDiffDialog(
     }
 
     private fun saveContextDocuments() {
-        val projectRoot = project.baseDir ?: return
+        val projectRoot = projectRoot() ?: return
         val documentManager = FileDocumentManager.getInstance()
         paths.forEach { path ->
             val file = projectRoot.findFileByRelativePath(path) ?: return@forEach
@@ -324,7 +325,7 @@ class GitContextDiffDialog(
                     statusLabel.text = "Failed to load file comparison: $it"
                     return
                 }
-                val currentFile = project.baseDir?.findFileByRelativePath(path)
+                val currentFile = projectRoot()?.findFileByRelativePath(path)
                 val contentFactory = DiffContentFactory.getInstance()
                 val branchDiffContent =
                     branchContent?.let {
@@ -348,6 +349,9 @@ class GitContextDiffDialog(
             }
         }.queue()
     }
+
+    private fun projectRoot() =
+        project.basePath?.let { LocalFileSystem.getInstance().findFileByPath(it) }
 
     private class DiffTableModel : AbstractTableModel() {
         private var results: List<FileDiffResult> = emptyList()

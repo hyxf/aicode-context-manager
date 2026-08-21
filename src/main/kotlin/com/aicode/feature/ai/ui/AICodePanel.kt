@@ -196,7 +196,7 @@ class AICodePanel(private val project: Project) : JPanel(), Disposable {
     }
 
     private fun findGitRepository() =
-        project.baseDir?.let {
+        project.basePath?.let { LocalFileSystem.getInstance().findFileByPath(it) }?.let {
             GitRepositoryManager.getInstance(project).getRepositoryForFileQuick(it)
         }
 
@@ -490,7 +490,7 @@ class AICodePanel(private val project: Project) : JPanel(), Disposable {
             val s = service()
             val root = rootNode.userObject as AICodeNodeData
             root.displayName = "Group: ${s.getActiveGroupName()}"
-            root.virtualFile = project.baseDir
+            root.virtualFile = project.basePath?.let { LocalFileSystem.getInstance().findFileByPath(it) }
             root.hasMissingFiles = false
             val paths = s.readFilePaths()
             paths.sort()

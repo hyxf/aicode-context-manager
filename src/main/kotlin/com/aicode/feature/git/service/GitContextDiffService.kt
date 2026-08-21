@@ -2,6 +2,7 @@ package com.aicode.feature.git.service
 
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.VcsException
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VfsUtilCore
 import git4idea.commands.Git
 import git4idea.commands.GitBinaryHandler
@@ -38,7 +39,7 @@ class GitContextDiffService {
         paths: List<String>,
     ): List<FileDiffResult> {
         if (paths.isEmpty()) return emptyList()
-        val projectRoot = project.baseDir ?: throw VcsException("The project has no base directory")
+        val projectRoot = projectRoot(project) ?: throw VcsException("The project has no base directory")
         val projectPrefix =
             VfsUtilCore.getRelativePath(projectRoot, repository.root, '/')
                 ?: throw VcsException("The project is outside the selected Git repository")
@@ -62,7 +63,7 @@ class GitContextDiffService {
         branch: String,
         path: String,
     ): ByteArray? {
-        val projectRoot = project.baseDir ?: return null
+        val projectRoot = projectRoot(project) ?: return null
         val projectPrefix = VfsUtilCore.getRelativePath(projectRoot, repository.root, '/') ?: return null
         val gitPath = joinPath(projectPrefix, path)
         val existenceHandler = GitLineHandler(project, repository.root, GitCommand.LS_TREE)
@@ -77,6 +78,9 @@ class GitContextDiffService {
     }
 
     companion object {
+        private fun projectRoot(project: Project) =
+            project.basePath?.let { LocalFileSystem.getInstance().findFileByPath(it) }
+
         @JvmStatic
         fun buildResults(
             paths: List<String>,
