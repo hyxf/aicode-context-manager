@@ -19,6 +19,17 @@ class GitContextDiffService {
             .distinct()
             .sorted()
 
+    fun getRemoteName(repository: GitRepository, branch: String): String? =
+        findRemoteName(branch, repository.remotes.map { it.name })
+
+    @Throws(VcsException::class)
+    fun fetch(project: Project, repository: GitRepository, remoteName: String) {
+        val handler = GitLineHandler(project, repository.root, GitCommand.FETCH)
+        handler.addParameters(remoteName)
+        git.runCommand(handler).throwOnError()
+        repository.update()
+    }
+
     @Throws(VcsException::class)
     fun compare(
         project: Project,
@@ -94,6 +105,12 @@ class GitContextDiffService {
                 paths.add(String(output, start, output.size - start, StandardCharsets.UTF_8))
             return paths
         }
+
+        @JvmStatic
+        fun findRemoteName(branch: String, remoteNames: List<String>): String? =
+            remoteNames
+                .sortedByDescending { it.length }
+                .firstOrNull { branch.startsWith("$it/") }
 
         private fun normalizePath(path: String) = path.replace('\\', '/').removePrefix("./")
 

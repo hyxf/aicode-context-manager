@@ -12,6 +12,8 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileTypes.FileTypeManager
+import com.intellij.openapi.editor.event.DocumentEvent
+import com.intellij.openapi.editor.event.DocumentListener
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.Task
@@ -21,6 +23,7 @@ import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.ui.TextFieldWithAutoCompletion
 import com.intellij.ui.components.JBLabel
+import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.FormBuilder
@@ -68,12 +71,19 @@ class GitContextDiffDialog(
         }
     private val tableModel = DiffTableModel()
     private val table = JBTable(tableModel)
+    private val fetchBeforeCompareCheckBox = JBCheckBox("Fetch remote before compare", true)
     private val statusLabel = JBLabel("Choose a branch and click Execute.")
     private var comparedBranch: String? = null
 
     init {
         title = "Compare AICode Context"
         setOKButtonText("Execute")
+        branchTextField.addDocumentListener(
+            object : DocumentListener {
+                override fun documentChanged(event: DocumentEvent) = updateFetchOption()
+            }
+        )
+        updateFetchOption()
         init()
     }
 
@@ -82,15 +92,23 @@ class GitContextDiffDialog(
     override fun doOKAction() {
         val compareBranch = selectedBranch()
         if (compareBranch.isEmpty() || compareBranch == currentBranch) return
+        val remoteName =
+            diffService.getRemoteName(repository, compareBranch)
+                ?.takeIf { fetchBeforeCompareCheckBox.isSelected }
         saveContextDocuments()
         isOKActionEnabled = false
-        statusLabel.text = "Comparing..."
+        statusLabel.text = if (remoteName == null) "Comparing..." else "Fetching $remoteName..."
         object : Task.Backgroundable(project, "Comparing AICode context files", false) {
             private var results: List<FileDiffResult> = emptyList()
             private var error: String? = null
+            private var operation = if (remoteName == null) "Comparison" else "Fetch"
 
             override fun run(indicator: ProgressIndicator) {
                 try {
+                    if (remoteName != null) {
+                        diffService.fetch(project, repository, remoteName)
+                        operation = "Comparison"
+                    }
                     results =
                         diffService.compare(
                             project,
@@ -101,7 +119,7 @@ class GitContextDiffDialog(
                 } catch (ex: ProcessCanceledException) {
                     throw ex
                 } catch (ex: Exception) {
-                    error = ex.message?.takeIf { it.isNotBlank() } ?: "Unexpected Git error"
+                    error = "$operation failed: ${ex.message?.takeIf { it.isNotBlank() } ?: "Unexpected Git error"}"
                 }
             }
 
@@ -150,6 +168,7 @@ class GitContextDiffDialog(
             FormBuilder.createFormBuilder()
                 .addLabeledComponent("Current branch:", JBLabel(currentBranch))
                 .addLabeledComponent("Compare branch:", compareBranchBox)
+                .addComponent(fetchBeforeCompareCheckBox)
                 .panel
         return JPanel(BorderLayout(0, JBUI.scale(10))).apply {
             border = JBUI.Borders.empty(8, 12)
@@ -161,6 +180,13 @@ class GitContextDiffDialog(
     }
 
     private fun selectedBranch() = branchTextField.text.trim()
+
+    private fun updateFetchOption() {
+        val isRemoteBranch = diffService.getRemoteName(repository, selectedBranch()) != null
+        fetchBeforeCompareCheckBox.isVisible = isRemoteBranch
+        fetchBeforeCompareCheckBox.parent?.revalidate()
+        fetchBeforeCompareCheckBox.parent?.repaint()
+    }
 
     private fun showBranchCompletions() {
         if (project.isDisposed || isDisposed) return

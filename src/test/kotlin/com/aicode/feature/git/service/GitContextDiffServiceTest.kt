@@ -5,6 +5,18 @@ import org.junit.Test
 
 class GitContextDiffServiceTest {
     @Test
+    fun `finds the remote owning a remote tracking branch`() {
+        assertEquals(
+            "company/origin",
+            GitContextDiffService.findRemoteName(
+                "company/origin/main",
+                listOf("origin", "company/origin"),
+            ),
+        )
+        assertEquals(null, GitContextDiffService.findRemoteName("main", listOf("origin")))
+    }
+
+    @Test
     fun `marks only context paths returned by git as changed`() {
         val results =
             GitContextDiffService.buildResults(
