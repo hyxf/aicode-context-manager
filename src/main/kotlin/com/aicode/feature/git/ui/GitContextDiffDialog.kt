@@ -18,13 +18,17 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.ComboBox
 import com.intellij.openapi.ui.ComponentWithBrowseButton
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.ValidationInfo
 import com.intellij.ui.TextFieldWithAutoCompletion
+import com.intellij.ui.JBColor
+import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBScrollPane
+import com.intellij.ui.components.JBTextField
 import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.FormBuilder
 import com.intellij.util.ui.JBUI
@@ -32,17 +36,25 @@ import git4idea.repo.GitRepository
 import java.awt.BorderLayout
 import java.awt.Component
 import java.awt.Dimension
+import java.awt.FlowLayout
+import java.awt.Font
+import java.awt.event.KeyAdapter
+import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.Action
 import javax.swing.JComponent
+import javax.swing.ListSelectionModel
 import javax.swing.JPanel
 import javax.swing.RowSorter
 import javax.swing.SortOrder
 import javax.swing.JTable
 import javax.swing.SwingUtilities
+import javax.swing.RowFilter
+import javax.swing.event.DocumentEvent as SwingDocumentEvent
 import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
+import javax.swing.table.TableRowSorter
 
 class GitContextDiffDialog(
     private val project: Project,
@@ -71,9 +83,25 @@ class GitContextDiffDialog(
         }.apply {
             setButtonIcon(AllIcons.General.ArrowDown)
         }
+    private val fetchBeforeCompareCheckBox =
+        JBCheckBox("Fetch before compare", true).apply {
+            toolTipText = "Fetch the selected remote before comparing."
+        }
+    private val fetchOptionPanel = JPanel(BorderLayout()).apply {
+        add(fetchBeforeCompareCheckBox, BorderLayout.CENTER)
+        preferredSize = fetchBeforeCompareCheckBox.preferredSize
+    }
+    private val compareBranchControls = JPanel(BorderLayout(JBUI.scale(10), 0)).apply {
+        add(compareBranchBox, BorderLayout.CENTER)
+        add(fetchOptionPanel, BorderLayout.EAST)
+    }
     private val tableModel = DiffTableModel()
     private val table = JBTable(tableModel)
-    private val fetchBeforeCompareCheckBox = JBCheckBox("Fetch remote before compare", true)
+    private val tableSorter = TableRowSorter(tableModel)
+    private val searchField = JBTextField().apply { emptyText.text = "Search files or paths" }
+    private val fileFilterBox = ComboBox(FileFilter.values()).apply {
+        selectedItem = FileFilter.CHANGED
+    }
     private val statusLabel = JBLabel("Choose a branch and click Execute.")
     private var comparedBranch: String? = null
 
@@ -85,6 +113,12 @@ class GitContextDiffDialog(
                 override fun documentChanged(event: DocumentEvent) = updateFetchOption()
             }
         )
+        searchField.document.addDocumentListener(
+            object : DocumentAdapter() {
+                override fun textChanged(event: SwingDocumentEvent) = applyTableFilter()
+            }
+        )
+        fileFilterBox.addActionListener { applyTableFilter() }
         updateFetchOption()
         init()
     }
@@ -136,7 +170,10 @@ class GitContextDiffDialog(
                 tableModel.setResults(results)
                 comparedBranch = compareBranch
                 val changedCount = results.count { it.changed }
-                statusLabel.text = "Compared ${results.size} files; $changedCount changed."
+                applyTableFilter()
+                if (table.rowCount > 0) table.setRowSelectionInterval(0, 0)
+                statusLabel.text =
+                    "$changedCount changed · ${results.size - changedCount} unchanged · ${results.size} total"
             }
         }.queue()
     }
@@ -152,11 +189,16 @@ class GitContextDiffDialog(
     }
 
     override fun createCenterPanel(): JComponent {
-        table.emptyText.text = "No comparison results."
+        table.emptyText.text = "No files match the current filter."
         table.setShowGrid(false)
-        table.autoCreateRowSorter = true
-        table.rowSorter.sortKeys = listOf(RowSorter.SortKey(1, SortOrder.ASCENDING))
-        table.columnModel.getColumn(0).cellRenderer = PathCellRenderer()
+        table.rowHeight = JBUI.scale(24)
+        table.selectionModel.selectionMode = ListSelectionModel.SINGLE_SELECTION
+        table.fillsViewportHeight = true
+        table.rowSorter = tableSorter
+        tableSorter.sortKeys = listOf(RowSorter.SortKey(0, SortOrder.DESCENDING))
+        table.columnModel.getColumn(0).cellRenderer = StatusCellRenderer()
+        table.columnModel.getColumn(1).cellRenderer = FileCellRenderer(tableModel)
+        table.columnModel.getColumn(2).cellRenderer = LocationCellRenderer(tableModel)
         table.addMouseListener(
             object : MouseAdapter() {
                 override fun mouseClicked(event: MouseEvent) {
@@ -166,16 +208,42 @@ class GitContextDiffDialog(
                 }
             }
         )
-        table.columnModel.getColumn(1).preferredWidth = 120
-        table.columnModel.getColumn(1).maxWidth = 160
-        val header =
+        table.addKeyListener(
+            object : KeyAdapter() {
+                override fun keyPressed(event: KeyEvent) {
+                    if (event.keyCode != KeyEvent.VK_ENTER) return
+                    openSelectedFileDiff()
+                    event.consume()
+                }
+            }
+        )
+        table.columnModel.getColumn(0).preferredWidth = 100
+        table.columnModel.getColumn(0).maxWidth = 120
+        table.columnModel.getColumn(1).preferredWidth = 210
+        val branchForm =
             FormBuilder.createFormBuilder()
+                .setVerticalGap(JBUI.scale(6))
+                .setHorizontalGap(JBUI.scale(10))
                 .addLabeledComponent("Current branch:", JBLabel(currentBranch))
-                .addLabeledComponent("Compare branch:", compareBranchBox)
-                .addComponent(fetchBeforeCompareCheckBox)
+                .addLabeledComponent("Compare branch:", compareBranchControls)
                 .panel
+        val filters = JPanel(BorderLayout(JBUI.scale(8), 0)).apply {
+            border = JBUI.Borders.emptyTop(2)
+            add(searchField, BorderLayout.CENTER)
+            add(
+                JPanel(FlowLayout(FlowLayout.RIGHT, 0, 0)).apply {
+                    add(JBLabel("Show: "))
+                    add(fileFilterBox)
+                },
+                BorderLayout.EAST,
+            )
+        }
+        val header = JPanel(BorderLayout(0, JBUI.scale(10))).apply {
+            add(branchForm, BorderLayout.NORTH)
+            add(filters, BorderLayout.SOUTH)
+        }
         return JPanel(BorderLayout(0, JBUI.scale(10))).apply {
-            border = JBUI.Borders.empty(8, 12)
+            border = JBUI.Borders.empty(10, 12, 8, 12)
             add(header, BorderLayout.NORTH)
             add(JBScrollPane(table), BorderLayout.CENTER)
             add(statusLabel, BorderLayout.SOUTH)
@@ -187,9 +255,34 @@ class GitContextDiffDialog(
 
     private fun updateFetchOption() {
         val isRemoteBranch = diffService.getRemoteName(repository, selectedBranch()) != null
-        fetchBeforeCompareCheckBox.isVisible = isRemoteBranch
-        fetchBeforeCompareCheckBox.parent?.revalidate()
-        fetchBeforeCompareCheckBox.parent?.repaint()
+        fetchBeforeCompareCheckBox.isSelected = isRemoteBranch
+        fetchBeforeCompareCheckBox.isEnabled = isRemoteBranch
+        fetchBeforeCompareCheckBox.toolTipText =
+            if (isRemoteBranch) "Fetch the selected remote before comparing."
+            else "Fetch is available only for remote branches."
+    }
+
+    private fun applyTableFilter() {
+        val query = searchField.text.trim()
+        val filter = fileFilterBox.selectedItem as? FileFilter ?: FileFilter.ALL
+        tableSorter.rowFilter =
+            object : RowFilter<DiffTableModel, Int>() {
+                override fun include(entry: Entry<out DiffTableModel, out Int>): Boolean {
+                    val result = tableModel.getResult(entry.identifier) ?: return false
+                    val statusMatches =
+                        when (filter) {
+                            FileFilter.CHANGED -> result.changed
+                            FileFilter.UNCHANGED -> !result.changed
+                            FileFilter.ALL -> true
+                        }
+                    return statusMatches && result.path.contains(query, ignoreCase = true)
+                }
+            }
+    }
+
+    private fun openSelectedFileDiff() {
+        val viewRow = table.selectedRow
+        if (viewRow >= 0) openFileDiff(table.convertRowIndexToModel(viewRow))
     }
 
     private fun showBranchCompletions() {
@@ -268,13 +361,24 @@ class GitContextDiffDialog(
 
         override fun getRowCount() = results.size
 
-        override fun getColumnCount() = 2
+        override fun getColumnCount() = 3
 
-        override fun getColumnName(column: Int) = if (column == 0) "File Path" else "Changed"
+        override fun getColumnName(column: Int) =
+            when (column) {
+                0 -> "Status"
+                1 -> "File"
+                else -> "Location"
+            }
 
         override fun getValueAt(rowIndex: Int, columnIndex: Int): Any =
-            if (columnIndex == 0) results[rowIndex].path
-            else if (results[rowIndex].changed) "Changed" else "No changes"
+            when (columnIndex) {
+                0 -> results[rowIndex].changed
+                1 -> results[rowIndex].path.substringAfterLast('/')
+                else -> results[rowIndex].path.substringBeforeLast('/', "")
+            }
+
+        override fun getColumnClass(columnIndex: Int): Class<*> =
+            if (columnIndex == 0) Boolean::class.java else String::class.java
     }
 
     private class CaseInsensitiveBranchCompletionProvider(branches: List<String>) :
@@ -290,7 +394,49 @@ class GitContextDiffDialog(
             CaseInsensitiveContainsMatcher(prefix)
     }
 
-    private class PathCellRenderer : DefaultTableCellRenderer() {
+    private enum class FileFilter(private val label: String) {
+        CHANGED("Changed"),
+        UNCHANGED("Unchanged"),
+        ALL("All");
+
+        override fun toString() = label
+    }
+
+    private class StatusCellRenderer : DefaultTableCellRenderer() {
+        override fun getTableCellRendererComponent(
+            table: JTable,
+            value: Any?,
+            isSelected: Boolean,
+            hasFocus: Boolean,
+            row: Int,
+            column: Int,
+        ): Component {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+            val changed = value == true
+            text = if (changed) "●  Changed" else "—  Unchanged"
+            if (!isSelected) foreground = if (changed) JBColor(0xCC7832, 0xCC7832) else JBColor.GRAY
+            return this
+        }
+    }
+
+    private class FileCellRenderer(private val model: DiffTableModel) : DefaultTableCellRenderer() {
+        override fun getTableCellRendererComponent(
+            table: JTable,
+            value: Any?,
+            isSelected: Boolean,
+            hasFocus: Boolean,
+            row: Int,
+            column: Int,
+        ): Component {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column)
+            val result = model.getResult(table.convertRowIndexToModel(row))
+            toolTipText = result?.path
+            font = font.deriveFont(if (result?.changed == true) Font.BOLD else Font.PLAIN)
+            return this
+        }
+    }
+
+    private class LocationCellRenderer(private val model: DiffTableModel) : DefaultTableCellRenderer() {
         override fun getTableCellRendererComponent(
             table: JTable,
             value: Any?,
@@ -307,9 +453,11 @@ class GitContextDiffDialog(
                 row,
                 column,
             )
-            val path = value?.toString().orEmpty()
-            toolTipText = path
-            text = shortenPath(path, table.columnModel.getColumn(column).width - JBUI.scale(12))
+            val result = model.getResult(table.convertRowIndexToModel(row))
+            val location = value?.toString().orEmpty().ifEmpty { "Project root" }
+            toolTipText = result?.path
+            if (!isSelected) foreground = JBColor.GRAY
+            text = shortenPath(location, table.columnModel.getColumn(column).width - JBUI.scale(12))
             return this
         }
 
