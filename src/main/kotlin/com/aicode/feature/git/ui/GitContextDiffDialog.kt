@@ -5,19 +5,21 @@ import com.aicode.feature.git.service.GitContextDiffService.FileDiffResult
 import com.intellij.diff.DiffContentFactory
 import com.intellij.diff.DiffManager
 import com.intellij.diff.requests.SimpleDiffRequest
+import com.intellij.codeInsight.completion.CodeCompletionHandlerBase
+import com.intellij.codeInsight.completion.CompletionType
+import com.intellij.codeInsight.completion.PrefixMatcher
+import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.externalSystem.service.ui.completion.TextCompletionComboBox
-import com.intellij.openapi.externalSystem.service.ui.completion.TextCompletionComboBoxConverter
-import com.intellij.openapi.externalSystem.service.ui.completion.TextCompletionField.UpdatePopupType
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.ComponentWithBrowseButton
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.ValidationInfo
-import com.intellij.ui.DocumentAdapter
+import com.intellij.ui.TextFieldWithAutoCompletion
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
@@ -34,7 +36,6 @@ import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTable
 import javax.swing.SwingUtilities
-import javax.swing.event.DocumentEvent
 import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
 
@@ -46,20 +47,24 @@ class GitContextDiffDialog(
     private val paths: List<String>,
     private val diffService: GitContextDiffService = GitContextDiffService(),
 ) : DialogWrapper(project, true) {
-    private var branchPopupRefreshScheduled = false
-    private val compareBranchBox =
-        TextCompletionComboBox(project, TextCompletionComboBoxConverter.Default()).apply {
-            collectionModel.add(branches.filter { it != currentBranch })
-            selectedItem = ""
-            emptyText.text = "Select or enter a comparison branch"
+    private val comparisonBranches = branches.filter { it != currentBranch }.distinct()
+    private val defaultComparisonBranch = BranchSelection.preferredBranch(comparisonBranches)
+    private val branchTextField =
+        TextFieldWithAutoCompletion(
+            project,
+            CaseInsensitiveBranchCompletionProvider(comparisonBranches),
+            true,
+            defaultComparisonBranch,
+        ).apply {
+            setPlaceholder("Select or enter a comparison branch")
             toolTipText = "Type to complete a branch name, or use the arrow to browse all branches."
-            document.addDocumentListener(
-                object : DocumentAdapter() {
-                    override fun textChanged(event: DocumentEvent) {
-                        if (event.type == DocumentEvent.EventType.REMOVE) scheduleBranchPopupRefresh()
-                    }
-                }
-            )
+        }
+    private val compareBranchBox =
+        ComponentWithBrowseButton(branchTextField) {
+            branchTextField.requestFocusInWindow()
+            SwingUtilities.invokeLater { showBranchCompletions() }
+        }.apply {
+            setButtonIcon(AllIcons.General.ArrowDown)
         }
     private val tableModel = DiffTableModel()
     private val table = JBTable(tableModel)
@@ -155,18 +160,12 @@ class GitContextDiffDialog(
         }
     }
 
-    private fun selectedBranch() = compareBranchBox.text.trim()
+    private fun selectedBranch() = branchTextField.text.trim()
 
-    private fun scheduleBranchPopupRefresh() {
-        if (branchPopupRefreshScheduled) return
-        branchPopupRefreshScheduled = true
-        SwingUtilities.invokeLater {
-            branchPopupRefreshScheduled = false
-            if (project.isDisposed || isDisposed) return@invokeLater
-            // Recreate the platform popup so Backspace expands the cached candidate list again.
-            compareBranchBox.updatePopup(UpdatePopupType.HIDE)
-            compareBranchBox.updatePopup(UpdatePopupType.SHOW_IF_HAS_VARIANCES)
-        }
+    private fun showBranchCompletions() {
+        if (project.isDisposed || isDisposed) return
+        val editor = branchTextField.editor ?: return
+        CodeCompletionHandlerBase(CompletionType.BASIC).invokeCompletion(project, editor)
     }
 
     private fun saveContextDocuments() {
@@ -246,6 +245,19 @@ class GitContextDiffDialog(
         override fun getValueAt(rowIndex: Int, columnIndex: Int): Any =
             if (columnIndex == 0) results[rowIndex].path
             else if (results[rowIndex].changed) "Changed" else "No changes"
+    }
+
+    private class CaseInsensitiveBranchCompletionProvider(branches: List<String>) :
+        TextFieldWithAutoCompletion.StringsCompletionProvider(branches, null) {
+        override fun createPrefixMatcher(prefix: String): PrefixMatcher =
+            CaseInsensitiveContainsMatcher(prefix)
+    }
+
+    private class CaseInsensitiveContainsMatcher(prefix: String) : PrefixMatcher(prefix) {
+        override fun prefixMatches(name: String): Boolean = name.contains(prefix, ignoreCase = true)
+
+        override fun cloneWithPrefix(prefix: String): PrefixMatcher =
+            CaseInsensitiveContainsMatcher(prefix)
     }
 
     private class PathCellRenderer : DefaultTableCellRenderer() {
