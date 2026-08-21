@@ -37,6 +37,8 @@ import java.awt.event.MouseEvent
 import javax.swing.Action
 import javax.swing.JComponent
 import javax.swing.JPanel
+import javax.swing.RowSorter
+import javax.swing.SortOrder
 import javax.swing.JTable
 import javax.swing.SwingUtilities
 import javax.swing.table.AbstractTableModel
@@ -152,6 +154,8 @@ class GitContextDiffDialog(
     override fun createCenterPanel(): JComponent {
         table.emptyText.text = "No comparison results."
         table.setShowGrid(false)
+        table.autoCreateRowSorter = true
+        table.rowSorter.sortKeys = listOf(RowSorter.SortKey(1, SortOrder.ASCENDING))
         table.columnModel.getColumn(0).cellRenderer = PathCellRenderer()
         table.addMouseListener(
             object : MouseAdapter() {
