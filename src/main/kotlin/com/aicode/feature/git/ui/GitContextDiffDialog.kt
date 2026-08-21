@@ -6,6 +6,9 @@ import com.intellij.diff.DiffContentFactory
 import com.intellij.diff.DiffManager
 import com.intellij.diff.requests.SimpleDiffRequest
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.externalSystem.service.ui.completion.TextCompletionComboBox
+import com.intellij.openapi.externalSystem.service.ui.completion.TextCompletionComboBoxConverter
+import com.intellij.openapi.externalSystem.service.ui.completion.TextCompletionField.UpdatePopupType
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.progress.ProgressIndicator
@@ -14,6 +17,7 @@ import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.ValidationInfo
+import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.table.JBTable
@@ -26,11 +30,11 @@ import java.awt.Dimension
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.Action
-import javax.swing.DefaultComboBoxModel
-import javax.swing.JComboBox
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JTable
+import javax.swing.SwingUtilities
+import javax.swing.event.DocumentEvent
 import javax.swing.table.AbstractTableModel
 import javax.swing.table.DefaultTableCellRenderer
 
@@ -42,9 +46,20 @@ class GitContextDiffDialog(
     private val paths: List<String>,
     private val diffService: GitContextDiffService = GitContextDiffService(),
 ) : DialogWrapper(project, true) {
+    private var branchPopupRefreshScheduled = false
     private val compareBranchBox =
-        JComboBox(DefaultComboBoxModel(branches.filter { it != currentBranch }.toTypedArray())).apply {
-            isEditable = true
+        TextCompletionComboBox(project, TextCompletionComboBoxConverter.Default()).apply {
+            collectionModel.add(branches.filter { it != currentBranch })
+            selectedItem = ""
+            emptyText.text = "Select or enter a comparison branch"
+            toolTipText = "Type to complete a branch name, or use the arrow to browse all branches."
+            document.addDocumentListener(
+                object : DocumentAdapter() {
+                    override fun textChanged(event: DocumentEvent) {
+                        if (event.type == DocumentEvent.EventType.REMOVE) scheduleBranchPopupRefresh()
+                    }
+                }
+            )
         }
     private val tableModel = DiffTableModel()
     private val table = JBTable(tableModel)
@@ -140,7 +155,19 @@ class GitContextDiffDialog(
         }
     }
 
-    private fun selectedBranch() = compareBranchBox.editor.item?.toString()?.trim().orEmpty()
+    private fun selectedBranch() = compareBranchBox.text.trim()
+
+    private fun scheduleBranchPopupRefresh() {
+        if (branchPopupRefreshScheduled) return
+        branchPopupRefreshScheduled = true
+        SwingUtilities.invokeLater {
+            branchPopupRefreshScheduled = false
+            if (project.isDisposed || isDisposed) return@invokeLater
+            // Recreate the platform popup so Backspace expands the cached candidate list again.
+            compareBranchBox.updatePopup(UpdatePopupType.HIDE)
+            compareBranchBox.updatePopup(UpdatePopupType.SHOW_IF_HAS_VARIANCES)
+        }
+    }
 
     private fun saveContextDocuments() {
         val projectRoot = project.baseDir ?: return
