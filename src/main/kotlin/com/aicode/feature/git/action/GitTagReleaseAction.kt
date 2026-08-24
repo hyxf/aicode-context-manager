@@ -2,6 +2,7 @@ package com.aicode.feature.git.action
 
 import com.aicode.feature.git.service.GitTagService
 import com.aicode.feature.git.service.GitTagService.*
+import com.aicode.feature.git.service.GitTagService.ReleaseState
 import com.aicode.feature.git.service.GitTagVersionService
 import com.aicode.feature.git.service.GitTagVersionService.VersionCandidates
 import com.aicode.feature.git.ui.GitTagVersionDialog
@@ -53,7 +54,10 @@ class GitTagReleaseAction : AnAction(), DumbAware {
                         try {
                             candidates =
                                 GitTagVersionService.calculateCandidates(
-                                    GitTagService().getLocalTags(project, repository)
+                                    GitTagService().run {
+                                        getLocalTags(project, repository) +
+                                            getRemoteTags(project, repository, remote)
+                                    }
                                 )
                         } catch (ex: ProcessCanceledException) {
                             throw ex
@@ -98,13 +102,14 @@ class GitTagReleaseAction : AnAction(), DumbAware {
             remote: GitRemote,
             tagName: String,
         ) {
-            object : Task.Backgroundable(project, "Resolving Git HEAD", true) {
-                    private var reference: String? = null
+            object : Task.Backgroundable(project, "Checking Release State", true) {
+                    private var releaseState: ReleaseState? = null
                     private var error: String? = null
 
                     override fun run(indicator: ProgressIndicator) {
                         try {
-                            reference = GitTagService().resolveHead(repository)
+                            releaseState =
+                                GitTagService().inspectReleaseState(project, repository, remote)
                         } catch (ex: ProcessCanceledException) {
                             throw ex
                         } catch (ex: VcsException) {
@@ -115,7 +120,7 @@ class GitTagReleaseAction : AnAction(), DumbAware {
                     }
 
                     private fun failed(ex: Exception) {
-                        LOG.warn("Failed to resolve Git HEAD", ex)
+                        LOG.warn("Failed to inspect the Git release state", ex)
                         error = safeMessage(ex)
                     }
 
@@ -124,12 +129,19 @@ class GitTagReleaseAction : AnAction(), DumbAware {
                         error?.let {
                             notify(
                                 project,
-                                "Failed to resolve Git HEAD: $it",
+                                "Failed to inspect the release state: $it",
                                 NotificationType.ERROR,
                             )
                             return
                         }
-                        confirmRelease(project, repository, remote, tagName, reference!!)
+                        confirmRelease(
+                            project,
+                            repository,
+                            remote,
+                            tagName,
+                            releaseState!!.reference,
+                            releaseState!!,
+                        )
                     }
                 }
                 .queue()
@@ -141,9 +153,22 @@ class GitTagReleaseAction : AnAction(), DumbAware {
             remote: GitRemote,
             tagName: String,
             reference: String,
+            releaseState: ReleaseState,
         ) {
+            val warnings = releaseWarnings(remote, releaseState)
+            val branch = releaseState.branch ?: "Detached HEAD"
+            val tracking = releaseState.trackedBranch ?: "None"
+            val checks =
+                if (warnings.isEmpty()) "Pre-release checks: Passed"
+                else "Warnings:\n" + warnings.joinToString("\n") { "• $it" }
             val message =
-                "The following Git tag will be created at the current HEAD and pushed to ${remote.name}:\n\n$tagName\nCommit: ${abbreviate(reference)}\n\nContinue?"
+                "Repository: ${repository.root.presentableUrl}\n" +
+                    "Branch: $branch\n" +
+                    "Tracking branch: $tracking\n" +
+                    "Remote: ${remote.name}\n" +
+                    "Tag: $tagName\n" +
+                    "Commit: ${abbreviate(reference)}\n\n" +
+                    "$checks\n\nCreate and push this tag?"
             if (
                 Messages.showYesNoDialog(
                     project,
@@ -185,6 +210,11 @@ class GitTagReleaseAction : AnAction(), DumbAware {
                         if (!project.isDisposed)
                             showPublishResult(project, remote, tagName, result!!)
                     }
+
+                    override fun onCancel() {
+                        if (!project.isDisposed)
+                            result?.let { showPublishResult(project, remote, tagName, it) }
+                    }
                 }
                 .queue()
         }
@@ -218,6 +248,13 @@ class GitTagReleaseAction : AnAction(), DumbAware {
                         result.message + " Existing tags will not be overwritten.",
                         NotificationType.WARNING,
                     )
+                PublishStatus.VERSION_OUTDATED,
+                PublishStatus.TARGET_CHANGED ->
+                    notify(
+                        project,
+                        "Release stopped: ${result.message}",
+                        NotificationType.WARNING,
+                    )
                 PublishStatus.CHECK_FAILED ->
                     notify(
                         project,
@@ -229,6 +266,12 @@ class GitTagReleaseAction : AnAction(), DumbAware {
                         project,
                         "Failed to create Git tag $tagName: ${result.message}",
                         NotificationType.ERROR,
+                    )
+                PublishStatus.PUSH_CANCELLED ->
+                    notify(
+                        project,
+                        "Tag $tagName exists locally, but the push was cancelled. ${result.message}",
+                        NotificationType.WARNING,
                     )
             }
         }
@@ -298,6 +341,23 @@ class GitTagReleaseAction : AnAction(), DumbAware {
 
         private fun abbreviate(reference: String) =
             if (reference.length <= 12) reference else reference.substring(0, 12)
+
+        private fun releaseWarnings(remote: GitRemote, state: ReleaseState): List<String> =
+            buildList {
+                if (state.branch == null) add("HEAD is detached; the tag is not associated with a local branch.")
+                if (state.hasUncommittedChanges)
+                    add("The working tree contains uncommitted or untracked changes.")
+                if (state.branch != null && state.trackedBranch == null)
+                    add("The current branch has no tracking branch.")
+                if (
+                    state.trackingRemote != null && state.trackingRemote != remote.name
+                )
+                    add("The tracking branch belongs to a different remote: ${state.trackedBranch}.")
+                if (state.ahead > 0)
+                    add("The current branch is ${state.ahead} commit(s) ahead of ${state.trackedBranch}; those commits may not be pushed.")
+                if (state.behind > 0)
+                    add("The current branch is ${state.behind} commit(s) behind ${state.trackedBranch}.")
+            }
 
         private fun notify(
             project: Project,

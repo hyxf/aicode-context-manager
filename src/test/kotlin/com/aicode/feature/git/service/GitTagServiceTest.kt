@@ -12,4 +12,27 @@ class GitTagServiceTest {
             GitTagService.hasRef("0123456789abcdef\trefs/tags/v1.6.4^{}", "refs/tags/v1.6.4")
         )
     }
+
+    @Test
+    fun extractsOnlyDirectTagRefs() {
+        assertEquals(
+            "v1.6.4",
+            GitTagService.parseTagRef("0123456789abcdef\trefs/tags/v1.6.4"),
+        )
+        assertNull(GitTagService.parseTagRef("0123456789abcdef\trefs/tags/v1.6.4^{}"))
+        assertNull(GitTagService.parseTagRef("0123456789abcdef\trefs/heads/main"))
+    }
+
+    @Test
+    fun parsesAheadAndBehindCounts() {
+        assertEquals(3 to 2, GitTagService.parseDivergence("3\t2"))
+        assertNull(GitTagService.parseDivergence("invalid"))
+    }
+
+    @Test
+    fun rejectsASelectedVersionThatIsNoLongerLatest() {
+        assertTrue(GitTagService.isVersionOutdated("v1.2.1", listOf("v1.3.0")))
+        assertTrue(GitTagService.isVersionOutdated("v1.3.0", listOf("v1.3.0")))
+        assertFalse(GitTagService.isVersionOutdated("v1.3.1", listOf("v1.3.0")))
+    }
 }

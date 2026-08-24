@@ -1,5 +1,6 @@
 package com.aicode.feature.git.service
 
+import com.aicode.feature.git.model.SemVer
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
@@ -8,6 +9,8 @@ import com.intellij.openapi.vfs.VfsUtilCore
 import git4idea.GitTag
 import git4idea.branch.GitBranchUtil
 import git4idea.commands.Git
+import git4idea.commands.GitCommand
+import git4idea.commands.GitLineHandler
 import git4idea.push.GitPushParamsImpl
 import git4idea.repo.GitRemote
 import git4idea.repo.GitRepository
@@ -21,9 +24,67 @@ class GitTagService {
         GitBranchUtil.getAllTags(project, repository.root)
 
     @Throws(VcsException::class)
+    fun getRemoteTags(
+        project: Project,
+        repository: GitRepository,
+        remote: GitRemote,
+    ): List<String> {
+        val tags = linkedSetOf<String>()
+        for (url in remote.pushUrls) {
+            val result = git.lsRemote(project, VfsUtilCore.virtualToIoFile(repository.root), url)
+            result.throwOnError()
+            result.output.mapNotNullTo(tags, ::parseTagRef)
+        }
+        return tags.toList()
+    }
+
+    @Throws(VcsException::class)
     fun resolveHead(repository: GitRepository): String =
         git.resolveReference(repository, "HEAD")?.asString()
             ?: throw VcsException("The repository has no resolvable HEAD commit")
+
+    @Throws(VcsException::class)
+    fun inspectReleaseState(
+        project: Project,
+        repository: GitRepository,
+        remote: GitRemote,
+    ): ReleaseState {
+        val fetchHandler = GitLineHandler(project, repository.root, GitCommand.FETCH)
+        fetchHandler.addParameters(remote.name)
+        git.runCommand(fetchHandler).throwOnError()
+        repository.update()
+        val reference = resolveHead(repository)
+        val branch = repository.currentBranch
+        val statusHandler = GitLineHandler(project, repository.root, GitCommand.STATUS)
+        statusHandler.addParameters("--porcelain", "--untracked-files=normal")
+        val statusResult = git.runCommand(statusHandler)
+        statusResult.throwOnError()
+
+        val trackInfo = branch?.let { repository.getBranchTrackInfo(it.name) }
+        val trackedBranch = trackInfo?.remoteBranch
+        var ahead = 0
+        var behind = 0
+        if (trackedBranch != null && trackInfo.remote.name == remote.name) {
+            val divergenceHandler = GitLineHandler(project, repository.root, GitCommand.REV_LIST)
+            divergenceHandler.addParameters("--left-right", "--count", "HEAD...${trackedBranch.name}")
+            val divergenceResult = git.runCommand(divergenceHandler)
+            divergenceResult.throwOnError()
+            val divergence =
+                parseDivergence(divergenceResult.output.firstOrNull().orEmpty())
+                    ?: throw VcsException("Git returned an invalid branch divergence result")
+            ahead = divergence.first
+            behind = divergence.second
+        }
+        return ReleaseState(
+            reference,
+            branch?.name,
+            statusResult.output.isNotEmpty(),
+            trackedBranch?.name,
+            trackInfo?.remote?.name,
+            ahead,
+            behind,
+        )
+    }
 
     fun publishTag(
         project: Project,
@@ -51,6 +112,12 @@ class GitTagService {
                     PublishStatus.CHECK_FAILED,
                     "Remote ${remote.name} is no longer available for push.",
                 )
+            val currentHead = resolveHead(repository)
+            if (currentHead != reference)
+                return PublishResult.failure(
+                    PublishStatus.TARGET_CHANGED,
+                    "HEAD changed from ${abbreviate(reference)} to ${abbreviate(currentHead)} after confirmation.",
+                )
             if (getLocalTags(project, repository).contains(tagName))
                 return PublishResult.failure(
                     PublishStatus.LOCAL_TAG_EXISTS,
@@ -60,6 +127,15 @@ class GitTagService {
                 return PublishResult.failure(
                     PublishStatus.REMOTE_TAG_EXISTS,
                     "Tag $tagName already exists on remote ${currentRemote.name}.",
+                )
+            val availableTags =
+                getLocalTags(project, repository) +
+                    getRemoteTags(project, repository, currentRemote)
+            val latestVersion = availableTags.mapNotNull(SemVer::parseTag).maxOrNull()
+            if (isVersionOutdated(tagName, availableTags))
+                return PublishResult.failure(
+                    PublishStatus.VERSION_OUTDATED,
+                    "Tag $tagName is not newer than the latest available tag ${latestVersion!!.toTag()}.",
                 )
         } catch (ex: ProcessCanceledException) {
             throw ex
@@ -97,7 +173,10 @@ class GitTagService {
             try {
                 git.push(repository, params)
             } catch (ex: ProcessCanceledException) {
-                throw ex
+                return PublishResult.failure(
+                    PublishStatus.PUSH_CANCELLED,
+                    "Push was cancelled after the local tag was created; the remote state may be uncertain.",
+                )
             } catch (ex: RuntimeException) {
                 return PublishResult.failure(PublishStatus.PUSH_FAILED, safeMessage(ex))
             }
@@ -129,8 +208,11 @@ class GitTagService {
         SUCCESS,
         LOCAL_TAG_EXISTS,
         REMOTE_TAG_EXISTS,
+        VERSION_OUTDATED,
+        TARGET_CHANGED,
         CHECK_FAILED,
         CREATE_FAILED,
+        PUSH_CANCELLED,
         PUSH_FAILED,
     }
 
@@ -148,6 +230,16 @@ class GitTagService {
         }
     }
 
+    data class ReleaseState(
+        val reference: String,
+        val branch: String?,
+        val hasUncommittedChanges: Boolean,
+        val trackedBranch: String?,
+        val trackingRemote: String?,
+        val ahead: Int,
+        val behind: Int,
+    )
+
     companion object {
         private val LOG = Logger.getInstance(GitTagService::class.java)
 
@@ -164,6 +256,34 @@ class GitTagService {
             val separator = line.lastIndexOf('\t')
             return separator >= 0 && line.substring(separator + 1) == expectedRef
         }
+
+        @JvmStatic
+        fun parseTagRef(line: String): String? {
+            val separator = line.lastIndexOf('\t')
+            if (separator < 0) return null
+            val ref = line.substring(separator + 1)
+            if (!ref.startsWith(GitTag.REFS_TAGS_PREFIX) || ref.endsWith("^{}")) return null
+            return ref.removePrefix(GitTag.REFS_TAGS_PREFIX)
+        }
+
+        @JvmStatic
+        fun parseDivergence(line: String): Pair<Int, Int>? {
+            val counts = line.trim().split(Regex("\\s+"))
+            if (counts.size != 2) return null
+            val ahead = counts[0].toIntOrNull() ?: return null
+            val behind = counts[1].toIntOrNull() ?: return null
+            return ahead to behind
+        }
+
+        @JvmStatic
+        fun isVersionOutdated(tagName: String, availableTags: Collection<String>): Boolean {
+            val selected = SemVer.parseTag(tagName) ?: return false
+            val latest = availableTags.mapNotNull(SemVer::parseTag).maxOrNull() ?: return false
+            return selected <= latest
+        }
+
+        private fun abbreviate(reference: String) =
+            if (reference.length <= 12) reference else reference.substring(0, 12)
 
         private fun safeMessage(exception: Exception) =
             exception.message?.takeUnless { it.isBlank() } ?: "Unexpected Git error"
