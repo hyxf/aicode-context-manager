@@ -9,8 +9,10 @@ import com.intellij.codeInsight.completion.CodeCompletionHandlerBase
 import com.intellij.codeInsight.completion.CompletionType
 import com.intellij.codeInsight.completion.PrefixMatcher
 import com.intellij.icons.AllIcons
+import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileDocumentManager
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.editor.event.DocumentEvent
 import com.intellij.openapi.editor.event.DocumentListener
@@ -205,7 +207,14 @@ class GitContextDiffDialog(
                 override fun mouseClicked(event: MouseEvent) {
                     if (event.clickCount != 2) return
                     val viewRow = table.rowAtPoint(event.point)
-                    if (viewRow >= 0) openFileDiff(table.convertRowIndexToModel(viewRow))
+                    val viewColumn = table.columnAtPoint(event.point)
+                    if (viewRow < 0 || viewColumn < 0) return
+                    val modelRow = table.convertRowIndexToModel(viewRow)
+                    if (table.convertColumnIndexToModel(viewColumn) == LOCATION_COLUMN) {
+                        openFileInProject(modelRow)
+                    } else {
+                        openFileDiff(modelRow)
+                    }
                 }
             }
         )
@@ -286,6 +295,14 @@ class GitContextDiffDialog(
         if (viewRow >= 0) openFileDiff(table.convertRowIndexToModel(viewRow))
     }
 
+    private fun openFileInProject(modelRow: Int) {
+        val path = tableModel.getResult(modelRow)?.path ?: return
+        val root = projectRoot() ?: return
+        val file = root.findFileByRelativePath(path)?.takeUnless { it.isDirectory } ?: return
+        ProjectView.getInstance(project).select(null, file, true)
+        FileEditorManager.getInstance(project).openFile(file, true)
+    }
+
     private fun showBranchCompletions() {
         if (project.isDisposed || isDisposed) return
         val editor = branchTextField.editor ?: return
@@ -352,6 +369,10 @@ class GitContextDiffDialog(
 
     private fun projectRoot() =
         project.basePath?.let { LocalFileSystem.getInstance().findFileByPath(it) }
+
+    private companion object {
+        const val LOCATION_COLUMN = 2
+    }
 
     private class DiffTableModel : AbstractTableModel() {
         private var results: List<FileDiffResult> = emptyList()
