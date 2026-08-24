@@ -5,6 +5,7 @@ import com.aicode.feature.git.service.GitTagService.*
 import com.aicode.feature.git.service.GitTagService.ReleaseState
 import com.aicode.feature.git.service.GitTagVersionService
 import com.aicode.feature.git.service.GitTagVersionService.VersionCandidates
+import com.aicode.feature.git.ui.GitTagReleaseConfirmationDialog
 import com.aicode.feature.git.ui.GitTagVersionDialog
 import com.aicode.feature.git.util.GitRemoteUrlResolver
 import com.intellij.ide.BrowserUtil
@@ -169,16 +170,7 @@ class GitTagReleaseAction : AnAction(), DumbAware {
                     "Tag: $tagName\n" +
                     "Commit: ${abbreviate(reference)}\n\n" +
                     "$checks\n\nCreate and push this tag?"
-            if (
-                Messages.showYesNoDialog(
-                    project,
-                    message,
-                    "Confirm Git Tag Release",
-                    "Confirm Release",
-                    Messages.getCancelButton(),
-                    Messages.getQuestionIcon(),
-                ) == Messages.YES
-            )
+            if (GitTagReleaseConfirmationDialog(project, message).showAndGet())
                 publish(project, repository, remote, tagName, reference)
         }
 
