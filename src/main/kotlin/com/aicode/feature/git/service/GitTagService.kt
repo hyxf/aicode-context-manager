@@ -5,7 +5,6 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vcs.VcsException
-import com.intellij.openapi.vfs.VfsUtilCore
 import git4idea.GitTag
 import git4idea.branch.GitBranchUtil
 import git4idea.commands.Git
@@ -31,7 +30,9 @@ class GitTagService {
     ): List<String> {
         val tags = linkedSetOf<String>()
         for (url in remote.pushUrls) {
-            val result = git.lsRemote(project, VfsUtilCore.virtualToIoFile(repository.root), url)
+            val handler = GitLineHandler(project, repository.root, GitCommand.LS_REMOTE)
+            handler.addParameters("--tags", url)
+            val result = git.runCommand(handler)
             result.throwOnError()
             result.output.mapNotNullTo(tags, ::parseTagRef)
         }
@@ -50,7 +51,9 @@ class GitTagService {
         remote: GitRemote,
     ): ReleaseState {
         val fetchHandler = GitLineHandler(project, repository.root, GitCommand.FETCH)
-        fetchHandler.addParameters(remote.name)
+        // Tag refs were read separately when calculating the candidate version. Avoid fetching
+        // them again while refreshing the branch state for the confirmation dialog.
+        fetchHandler.addParameters("--no-tags", remote.name)
         git.runCommand(fetchHandler).throwOnError()
         repository.update()
         val reference = resolveHead(repository)
@@ -123,14 +126,15 @@ class GitTagService {
                     PublishStatus.LOCAL_TAG_EXISTS,
                     "Tag $tagName already exists locally.",
                 )
-            if (remoteTagExists(project, repository, currentRemote, tagName))
+            val remoteTags = getRemoteTags(project, repository, currentRemote)
+            if (remoteTags.contains(tagName))
                 return PublishResult.failure(
                     PublishStatus.REMOTE_TAG_EXISTS,
                     "Tag $tagName already exists on remote ${currentRemote.name}.",
                 )
             val availableTags =
                 getLocalTags(project, repository) +
-                    getRemoteTags(project, repository, currentRemote)
+                    remoteTags
             val latestVersion = availableTags.mapNotNull(SemVer::parseTag).maxOrNull()
             if (isVersionOutdated(tagName, availableTags))
                 return PublishResult.failure(
@@ -186,22 +190,6 @@ class GitTagService {
             return PublishResult.failure(PublishStatus.PUSH_FAILED, message)
         }
         return PublishResult.success()
-    }
-
-    @Throws(VcsException::class)
-    private fun remoteTagExists(
-        project: Project,
-        repository: GitRepository,
-        remote: GitRemote,
-        tagName: String,
-    ): Boolean {
-        val fullRef = GitTag.REFS_TAGS_PREFIX + tagName
-        for (url in remote.pushUrls) {
-            val result = git.lsRemote(project, VfsUtilCore.virtualToIoFile(repository.root), url)
-            result.throwOnError()
-            if (result.output.any { hasRef(it, fullRef) }) return true
-        }
-        return false
     }
 
     enum class PublishStatus {
