@@ -1,6 +1,5 @@
 package com.aicode.feature.git.service
 
-import com.aicode.feature.git.model.SemVer
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
@@ -43,24 +42,6 @@ class GitTagService {
     fun resolveHead(repository: GitRepository): String =
         git.resolveReference(repository, "HEAD")?.asString()
             ?: throw VcsException("The repository has no resolvable HEAD commit")
-
-    @Throws(VcsException::class)
-    fun fetchRemoteTagsAndBranches(
-        project: Project,
-        repository: GitRepository,
-        remote: GitRemote,
-    ) {
-        val fetchHandler = GitLineHandler(project, repository.root, GitCommand.FETCH)
-        fetchHandler.addParameters("--tags", remote.name)
-        val fetchResult = git.runCommand(fetchHandler)
-        if (!fetchResult.success()) {
-            tagFetchConflictMessage(fetchResult.errorOutputAsJoinedString)?.let {
-                throw VcsException(it)
-            }
-            fetchResult.throwOnError()
-        }
-        repository.update()
-    }
 
     @Throws(VcsException::class)
     fun inspectReleaseState(
@@ -139,47 +120,16 @@ class GitTagService {
                     PublishStatus.LOCAL_TAG_EXISTS,
                     "Tag $tagName already exists locally.",
                 )
-            val remoteTags = getRemoteTags(project, repository, currentRemote)
-            if (remoteTags.contains(tagName))
-                return PublishResult.failure(
-                    PublishStatus.REMOTE_TAG_EXISTS,
-                    "Tag $tagName already exists on remote ${currentRemote.name}.",
-                )
-            val availableTags =
-                getLocalTags(project, repository) +
-                    remoteTags
-            val latestVersion = availableTags.mapNotNull(SemVer::parseTag).maxOrNull()
-            if (isVersionOutdated(tagName, availableTags))
-                return PublishResult.failure(
-                    PublishStatus.VERSION_OUTDATED,
-                    "Tag $tagName is not newer than the latest available tag ${latestVersion!!.toTag()}.",
-                )
         } catch (ex: ProcessCanceledException) {
             throw ex
         } catch (ex: Exception) {
             return PublishResult.failure(PublishStatus.CHECK_FAILED, safeMessage(ex))
         }
 
-        val createResult =
-            try {
-                git.createNewTag(repository, tagName, null, reference)
-            } catch (ex: ProcessCanceledException) {
-                throw ex
-            } catch (ex: RuntimeException) {
-                return PublishResult.failure(PublishStatus.CREATE_FAILED, safeMessage(ex))
-            }
-        if (!createResult.success())
-            return PublishResult.failure(
-                PublishStatus.CREATE_FAILED,
-                createResult.errorOutputAsJoinedString,
-            )
-        refreshTags(repository)
-
-        val fullRef = GitTag.REFS_TAGS_PREFIX + tagName
         val params =
             GitPushParamsImpl(
                 currentRemote,
-                "$fullRef:$fullRef",
+                tagPushRefspec(reference, tagName),
                 false,
                 false,
                 false,
@@ -192,7 +142,7 @@ class GitTagService {
             } catch (ex: ProcessCanceledException) {
                 return PublishResult.failure(
                     PublishStatus.PUSH_CANCELLED,
-                    "Push was cancelled after the local tag was created; the remote state may be uncertain.",
+                    "Push was cancelled; no local tag was created, but the remote state may be uncertain.",
                 )
             } catch (ex: RuntimeException) {
                 return PublishResult.failure(PublishStatus.PUSH_FAILED, safeMessage(ex))
@@ -202,17 +152,36 @@ class GitTagService {
             if (pushResult.isAuthenticationFailed) message = "Authentication failed. $message"
             return PublishResult.failure(PublishStatus.PUSH_FAILED, message)
         }
+
+        val createResult =
+            try {
+                git.createNewTag(repository, tagName, null, reference)
+            } catch (ex: ProcessCanceledException) {
+                return PublishResult.failure(
+                    PublishStatus.LOCAL_TAG_CREATE_FAILED,
+                    "Remote tag $tagName was pushed successfully, but local tag creation was cancelled.",
+                )
+            } catch (ex: RuntimeException) {
+                return PublishResult.failure(
+                    PublishStatus.LOCAL_TAG_CREATE_FAILED,
+                    "Remote tag $tagName was pushed successfully, but the local tag could not be created: ${safeMessage(ex)}",
+                )
+            }
+        if (!createResult.success())
+            return PublishResult.failure(
+                PublishStatus.LOCAL_TAG_CREATE_FAILED,
+                "Remote tag $tagName was pushed successfully, but the local tag could not be created: ${createResult.errorOutputAsJoinedString}",
+            )
+        refreshTags(repository)
         return PublishResult.success()
     }
 
     enum class PublishStatus {
         SUCCESS,
         LOCAL_TAG_EXISTS,
-        REMOTE_TAG_EXISTS,
-        VERSION_OUTDATED,
         TARGET_CHANGED,
         CHECK_FAILED,
-        CREATE_FAILED,
+        LOCAL_TAG_CREATE_FAILED,
         PUSH_CANCELLED,
         PUSH_FAILED,
     }
@@ -277,26 +246,8 @@ class GitTagService {
         }
 
         @JvmStatic
-        fun tagFetchConflictMessage(errorOutput: String): String? {
-            if (!errorOutput.contains("would clobber existing tag", ignoreCase = true)) return null
-            val tagName =
-                Regex("""\[rejected]\s+\S+\s+->\s+(\S+)\s+\(would clobber existing tag\)""", RegexOption.IGNORE_CASE)
-                    .find(errorOutput)
-                    ?.groupValues
-                    ?.get(1)
-            return if (tagName == null) {
-                "A local tag conflicts with a remote tag. Rename or delete the conflicting local tag, then retry."
-            } else {
-                "Local tag $tagName points to a different commit than the remote tag. Rename or delete the local tag, then retry."
-            }
-        }
-
-        @JvmStatic
-        fun isVersionOutdated(tagName: String, availableTags: Collection<String>): Boolean {
-            val selected = SemVer.parseTag(tagName) ?: return false
-            val latest = availableTags.mapNotNull(SemVer::parseTag).maxOrNull() ?: return false
-            return selected <= latest
-        }
+        fun tagPushRefspec(reference: String, tagName: String) =
+            "$reference:${GitTag.REFS_TAGS_PREFIX}$tagName"
 
         private fun abbreviate(reference: String) =
             if (reference.length <= 12) reference else reference.substring(0, 12)

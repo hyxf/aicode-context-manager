@@ -54,10 +54,10 @@ class GitTagReleaseAction : AnAction(), DumbAware {
                     override fun run(indicator: ProgressIndicator) {
                         try {
                             val tagService = GitTagService()
-                            tagService.fetchRemoteTagsAndBranches(project, repository, remote)
                             candidates =
                                 GitTagVersionService.calculateCandidates(
-                                    tagService.getLocalTags(project, repository)
+                                    tagService.getLocalTags(project, repository) +
+                                        tagService.getRemoteTags(project, repository, remote)
                                 )
                         } catch (ex: ProcessCanceledException) {
                             throw ex
@@ -229,17 +229,15 @@ class GitTagReleaseAction : AnAction(), DumbAware {
                 PublishStatus.PUSH_FAILED ->
                     notify(
                         project,
-                        "Tag $tagName was created locally, but push did not report success. The remote state may be uncertain: ${result.message}",
+                        "Could not push tag $tagName; no local tag was created. The remote state may be uncertain: ${result.message}",
                         NotificationType.ERROR,
                     )
-                PublishStatus.LOCAL_TAG_EXISTS,
-                PublishStatus.REMOTE_TAG_EXISTS ->
+                PublishStatus.LOCAL_TAG_EXISTS ->
                     notify(
                         project,
                         result.message + " Existing tags will not be overwritten.",
                         NotificationType.WARNING,
                     )
-                PublishStatus.VERSION_OUTDATED,
                 PublishStatus.TARGET_CHANGED ->
                     notify(
                         project,
@@ -249,19 +247,19 @@ class GitTagReleaseAction : AnAction(), DumbAware {
                 PublishStatus.CHECK_FAILED ->
                     notify(
                         project,
-                        "Could not verify whether the tag exists; no tag was created: ${result.message}",
+                        "Pre-push checks failed; no tag was created: ${result.message}",
                         NotificationType.ERROR,
                     )
-                PublishStatus.CREATE_FAILED ->
+                PublishStatus.LOCAL_TAG_CREATE_FAILED ->
                     notify(
                         project,
-                        "Failed to create Git tag $tagName: ${result.message}",
+                        result.message,
                         NotificationType.ERROR,
                     )
                 PublishStatus.PUSH_CANCELLED ->
                     notify(
                         project,
-                        "Tag $tagName exists locally, but the push was cancelled. ${result.message}",
+                        result.message,
                         NotificationType.WARNING,
                     )
             }
