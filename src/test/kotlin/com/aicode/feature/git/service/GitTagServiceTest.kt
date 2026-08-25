@@ -30,6 +30,21 @@ class GitTagServiceTest {
     }
 
     @Test
+    fun explainsConflictingLocalAndRemoteTags() {
+        val message =
+            GitTagService.tagFetchConflictMessage(
+                "! [rejected]        v1.9.8 -> v1.9.8  (would clobber existing tag)"
+            )
+
+        assertEquals(
+            "Local tag v1.9.8 points to a different commit than the remote tag. " +
+                "Rename or delete the local tag, then retry.",
+            message,
+        )
+        assertNull(GitTagService.tagFetchConflictMessage("fatal: unable to access remote"))
+    }
+
+    @Test
     fun rejectsASelectedVersionThatIsNoLongerLatest() {
         assertTrue(GitTagService.isVersionOutdated("v1.2.1", listOf("v1.3.0")))
         assertTrue(GitTagService.isVersionOutdated("v1.3.0", listOf("v1.3.0")))
