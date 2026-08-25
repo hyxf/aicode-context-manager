@@ -45,16 +45,29 @@ class GitTagService {
             ?: throw VcsException("The repository has no resolvable HEAD commit")
 
     @Throws(VcsException::class)
+    fun fetchRemoteTagsAndBranches(
+        project: Project,
+        repository: GitRepository,
+        remote: GitRemote,
+    ) {
+        val fetchHandler = GitLineHandler(project, repository.root, GitCommand.FETCH)
+        fetchHandler.addParameters("--tags", remote.name)
+        val fetchResult = git.runCommand(fetchHandler)
+        if (!fetchResult.success()) {
+            tagFetchConflictMessage(fetchResult.errorOutputAsJoinedString)?.let {
+                throw VcsException(it)
+            }
+            fetchResult.throwOnError()
+        }
+        repository.update()
+    }
+
+    @Throws(VcsException::class)
     fun inspectReleaseState(
         project: Project,
         repository: GitRepository,
         remote: GitRemote,
     ): ReleaseState {
-        val fetchHandler = GitLineHandler(project, repository.root, GitCommand.FETCH)
-        // Tag refs were read separately when calculating the candidate version. Avoid fetching
-        // them again while refreshing the branch state for the confirmation dialog.
-        fetchHandler.addParameters("--no-tags", remote.name)
-        git.runCommand(fetchHandler).throwOnError()
         repository.update()
         val reference = resolveHead(repository)
         val branch = repository.currentBranch
@@ -261,6 +274,21 @@ class GitTagService {
             val ahead = counts[0].toIntOrNull() ?: return null
             val behind = counts[1].toIntOrNull() ?: return null
             return ahead to behind
+        }
+
+        @JvmStatic
+        fun tagFetchConflictMessage(errorOutput: String): String? {
+            if (!errorOutput.contains("would clobber existing tag", ignoreCase = true)) return null
+            val tagName =
+                Regex("""\[rejected]\s+\S+\s+->\s+(\S+)\s+\(would clobber existing tag\)""", RegexOption.IGNORE_CASE)
+                    .find(errorOutput)
+                    ?.groupValues
+                    ?.get(1)
+            return if (tagName == null) {
+                "A local tag conflicts with a remote tag. Rename or delete the conflicting local tag, then retry."
+            } else {
+                "Local tag $tagName points to a different commit than the remote tag. Rename or delete the local tag, then retry."
+            }
         }
 
         @JvmStatic

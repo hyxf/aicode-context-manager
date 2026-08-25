@@ -53,12 +53,11 @@ class GitTagReleaseAction : AnAction(), DumbAware {
 
                     override fun run(indicator: ProgressIndicator) {
                         try {
+                            val tagService = GitTagService()
+                            tagService.fetchRemoteTagsAndBranches(project, repository, remote)
                             candidates =
                                 GitTagVersionService.calculateCandidates(
-                                    GitTagService().run {
-                                        getLocalTags(project, repository) +
-                                            getRemoteTags(project, repository, remote)
-                                    }
+                                    tagService.getLocalTags(project, repository)
                                 )
                         } catch (ex: ProcessCanceledException) {
                             throw ex
