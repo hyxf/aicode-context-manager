@@ -5,13 +5,16 @@ import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.ui.Messages
 import com.intellij.ui.DocumentAdapter
+import com.intellij.ui.ColoredListCellRenderer
 import com.intellij.ui.SearchTextField
+import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.JBList
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import javax.swing.DefaultListModel
 import javax.swing.JComponent
+import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.ListSelectionModel
 import javax.swing.event.DocumentEvent
@@ -31,6 +34,20 @@ class CommonCommitMessageConfigurable : Configurable {
         val model = DefaultListModel<String>()
         val list = JBList(model).apply {
             selectionMode = ListSelectionModel.SINGLE_SELECTION
+            fixedCellHeight = JBUI.scale(30)
+            cellRenderer =
+                object : ColoredListCellRenderer<String>() {
+                    override fun customizeCellRenderer(
+                        list: JList<out String>,
+                        value: String,
+                        index: Int,
+                        selected: Boolean,
+                        hasFocus: Boolean,
+                    ) {
+                        border = JBUI.Borders.empty(0, 10)
+                        append(value, SimpleTextAttributes.REGULAR_ATTRIBUTES)
+                    }
+                }
             emptyText.text = "No commit messages."
         }
         val search = SearchTextField(false).apply {
