@@ -23,7 +23,10 @@ class CommonCommitMessageService(
 
     @Synchronized
     fun getTemplates(): List<CommitMessageTemplate> {
-        if (!Files.exists(configPath)) return DefaultCommitMessages.templates
+        if (!Files.exists(configPath)) {
+            saveTemplates(DefaultCommitMessages.templates)
+            return DefaultCommitMessages.templates
+        }
         try {
             val content = Files.readString(configPath, StandardCharsets.UTF_8)
             if (content.isBlank()) return emptyList()

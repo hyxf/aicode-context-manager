@@ -16,7 +16,7 @@ class CommonCommitMessageServiceTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
-    fun `missing configuration returns defaults without creating a file`() {
+    fun `missing configuration is initialized with defaults`() {
         val path = temporaryFolder.root.toPath().resolve("nested/gitmessage.json")
 
         val messages = CommonCommitMessageService(path).getMessages()
@@ -24,8 +24,11 @@ class CommonCommitMessageServiceTest {
         assertTrue(messages.contains("docs(readme): 修改 README.md"))
         assertTrue(messages.contains("style: 格式化代码"))
         assertTrue(messages.contains("refactor: 优化代码结构"))
-        assertFalse(Files.exists(path))
+        assertTrue(Files.exists(path))
         assertEquals(DefaultCommitMessages.templates, CommonCommitMessageService(path).getTemplates())
+        val json = Files.readString(path, StandardCharsets.UTF_8)
+        assertTrue(json.contains("修改 README.md"))
+        assertTrue(json.contains("格式化代码"))
     }
 
     @Test
