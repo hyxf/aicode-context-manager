@@ -1,6 +1,7 @@
 package com.aicode.feature.git.service
 
 import com.aicode.feature.git.model.CommitMessageTemplate
+import com.aicode.feature.git.data.DefaultCommitMessages
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -15,11 +16,28 @@ class CommonCommitMessageServiceTest {
     val temporaryFolder = TemporaryFolder()
 
     @Test
-    fun `missing configuration returns an empty list`() {
+    fun `missing configuration returns defaults without creating a file`() {
         val path = temporaryFolder.root.toPath().resolve("nested/gitmessage.json")
 
-        assertTrue(CommonCommitMessageService(path).getMessages().isEmpty())
+        val messages = CommonCommitMessageService(path).getMessages()
+
+        assertTrue(messages.contains("docs(readme): 修改 README.md"))
+        assertTrue(messages.contains("style: 格式化代码"))
+        assertTrue(messages.contains("refactor: 优化代码结构"))
         assertFalse(Files.exists(path))
+        assertEquals(DefaultCommitMessages.templates, CommonCommitMessageService(path).getTemplates())
+    }
+
+    @Test
+    fun `restore defaults only returns templates missing from current messages`() {
+        val existingDefault = DefaultCommitMessages.templates.first()
+        val custom = CommitMessageTemplate("feat", "custom", "自定义消息")
+
+        val missing = DefaultCommitMessages.missingFrom(listOf(existingDefault, custom))
+
+        assertFalse(missing.contains(existingDefault))
+        assertFalse(missing.contains(custom))
+        assertEquals(DefaultCommitMessages.templates.drop(1), missing)
     }
 
     @Test

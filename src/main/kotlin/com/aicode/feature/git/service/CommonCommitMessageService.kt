@@ -1,5 +1,6 @@
 package com.aicode.feature.git.service
 
+import com.aicode.feature.git.data.DefaultCommitMessages
 import com.aicode.feature.git.model.CommitMessageTemplate
 import com.aicode.feature.git.model.GitMessageConfig
 import com.google.gson.GsonBuilder
@@ -22,7 +23,7 @@ class CommonCommitMessageService(
 
     @Synchronized
     fun getTemplates(): List<CommitMessageTemplate> {
-        if (!Files.exists(configPath)) return emptyList()
+        if (!Files.exists(configPath)) return DefaultCommitMessages.templates
         try {
             val content = Files.readString(configPath, StandardCharsets.UTF_8)
             if (content.isBlank()) return emptyList()

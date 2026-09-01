@@ -1,7 +1,11 @@
 package com.aicode.feature.git.settings
 
+import com.aicode.feature.git.data.DefaultCommitMessages
 import com.aicode.feature.git.model.CommitMessageTemplate
 import com.aicode.feature.git.service.CommonCommitMessageService
+import com.intellij.icons.AllIcons
+import com.intellij.openapi.actionSystem.AnAction
+import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.ui.DialogWrapper
@@ -74,9 +78,20 @@ class CommonCommitMessageConfigurable : Configurable {
             ToolbarDecorator.createDecorator(list)
                 .setAddAction { addMessage() }
                 .setEditAction { editMessage() }
+                .setEditActionUpdater { canModifySelectedMessage() }
                 .setRemoveAction { removeMessage() }
+                .setRemoveActionUpdater { canModifySelectedMessage() }
                 .setMoveUpAction { moveSelectedMessage(-1) }
                 .setMoveDownAction { moveSelectedMessage(1) }
+                .addExtraAction(
+                    object : AnAction(
+                        "Restore Defaults",
+                        "Restore missing built-in commit messages",
+                        AllIcons.Actions.Rollback,
+                    ) {
+                        override fun actionPerformed(event: AnActionEvent) = restoreDefaultMessages()
+                    }
+                )
                 .createPanel()
         listModel = model
         messageList = list
@@ -135,6 +150,7 @@ class CommonCommitMessageConfigurable : Configurable {
 
     private fun editMessage() {
         val oldValue = messageList?.selectedValue ?: return
+        if (oldValue in DefaultCommitMessages.templates) return
         val value = promptForMessage("Edit Commit Message", oldValue) ?: return
         if (!validateUnique(value, oldValue)) return
         val index = workingMessages.indexOf(oldValue)
@@ -144,8 +160,14 @@ class CommonCommitMessageConfigurable : Configurable {
 
     private fun removeMessage() {
         val selected = messageList?.selectedValue ?: return
+        if (selected in DefaultCommitMessages.templates) return
         workingMessages.remove(selected)
         refreshList()
+    }
+
+    private fun canModifySelectedMessage(): Boolean {
+        val selected = messageList?.selectedValue ?: return false
+        return selected !in DefaultCommitMessages.templates
     }
 
     private fun promptForMessage(title: String, initialValue: CommitMessageTemplate?): CommitMessageTemplate? =
@@ -167,6 +189,13 @@ class CommonCommitMessageConfigurable : Configurable {
         workingMessages[sourceIndex] = target
         workingMessages[destinationIndex] = selected
         refreshList(selected)
+    }
+
+    private fun restoreDefaultMessages() {
+        val missing = DefaultCommitMessages.missingFrom(workingMessages)
+        if (missing.isEmpty()) return
+        workingMessages.addAll(missing)
+        refreshList(missing.first())
     }
 
     private fun validateUnique(value: CommitMessageTemplate, oldValue: CommitMessageTemplate?): Boolean {
@@ -202,6 +231,7 @@ private class CommitMessageEditorDialog(
         JBTextArea(initialValue?.subject.orEmpty(), 4, 50).apply {
             lineWrap = true
             wrapStyleWord = true
+            border = JBUI.Borders.empty(6, 8)
         }
 
     init {
