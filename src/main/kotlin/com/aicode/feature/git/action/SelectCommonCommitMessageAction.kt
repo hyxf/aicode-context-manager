@@ -1,6 +1,6 @@
 package com.aicode.feature.git.action
 
-import com.aicode.feature.git.ui.CommonCommitMessageDialog
+import com.aicode.feature.git.ui.CommonCommitMessagePopup
 import com.aicode.feature.git.service.CommonCommitMessageService
 import com.aicode.feature.git.icons.GitIcons
 import com.intellij.notification.NotificationGroupManager
@@ -35,10 +35,7 @@ class SelectCommonCommitMessageAction : AnAction(
             )
             return
         }
-        val dialog = CommonCommitMessageDialog(project, messages)
-        if (dialog.showAndGet()) {
-            dialog.selectedMessage?.let(commitMessageControl::setCommitMessage)
-        }
+        CommonCommitMessagePopup(project, messages, commitMessageControl::setCommitMessage).show()
     }
 
     override fun update(e: AnActionEvent) {
