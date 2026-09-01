@@ -21,14 +21,14 @@ class CommonCommitMessageServiceTest {
 
         val messages = CommonCommitMessageService(path).getMessages()
 
-        assertTrue(messages.contains("docs(readme): 修改 README.md"))
-        assertTrue(messages.contains("style: 格式化代码"))
-        assertTrue(messages.contains("refactor: 优化代码结构"))
+        assertTrue(messages.contains("docs(readme): Update README.md"))
+        assertTrue(messages.contains("style: Format code"))
+        assertTrue(messages.contains("refactor: Optimize code structure"))
         assertTrue(Files.exists(path))
         assertEquals(DefaultCommitMessages.templates, CommonCommitMessageService(path).getTemplates())
         val json = Files.readString(path, StandardCharsets.UTF_8)
-        assertTrue(json.contains("修改 README.md"))
-        assertTrue(json.contains("格式化代码"))
+        assertTrue(json.contains("Update README.md"))
+        assertTrue(json.contains("Format code"))
     }
 
     @Test
