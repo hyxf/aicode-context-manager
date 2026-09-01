@@ -39,6 +39,15 @@
         <projectService
                 serviceImplementation="com.aicode.feature.ai.service.AICodeFileService"/>
 
+        <applicationService
+                serviceImplementation="com.aicode.feature.git.service.CommonCommitMessageService"/>
+
+        <applicationConfigurable
+                id="com.aicode.settings.CommonCommitMessages"
+                parentId="tools"
+                displayName="Common Commit Messages"
+                instance="com.aicode.feature.git.settings.CommonCommitMessageConfigurable"/>
+
         <!-- Icon Provider -->
         <iconProvider implementation="com.aicode.feature.ai.provider.AICodeIconProvider" order="first"/>
 
@@ -149,6 +158,16 @@
             <reference ref="com.aicode.action.CreateChangelogAction"/>
             <reference ref="com.aicode.action.GitTagReleaseAction"/>
         </group>
+
+        <action id="com.aicode.action.SelectCommonCommitMessageAction"
+                class="com.aicode.feature.git.action.SelectCommonCommitMessageAction"
+                text="Common Commit Messages..."
+                description="Select a predefined commit message"
+                icon="AllIcons.Actions.Search">
+            <add-to-group group-id="Vcs.MessageActionGroup"
+                          anchor="after"
+                          relative-to-action="Vcs.ShowMessageHistory"/>
+        </action>
     </actions>
 
     <projectListeners>
