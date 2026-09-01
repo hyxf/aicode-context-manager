@@ -2,7 +2,7 @@ package com.aicode.feature.git.action
 
 import com.aicode.feature.git.ui.CommonCommitMessageDialog
 import com.aicode.feature.git.service.CommonCommitMessageService
-import com.intellij.icons.AllIcons
+import com.aicode.feature.git.icons.GitIcons
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.actionSystem.ActionUpdateThread
@@ -15,7 +15,7 @@ import com.intellij.openapi.progress.Task
 class SelectCommonCommitMessageAction : AnAction(
     "Common Commit Messages...",
     "Select a predefined commit message",
-    AllIcons.Actions.Search,
+    GitIcons.COMMON_COMMIT_MESSAGE,
 ) {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
