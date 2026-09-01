@@ -25,11 +25,15 @@ import com.intellij.ui.ColoredTreeCellRenderer
 import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.treeStructure.Tree
+import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.tree.TreeUtil
 import git4idea.repo.GitRepositoryManager
 import java.awt.BorderLayout
+import java.awt.FontMetrics
+import java.awt.Graphics
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.beans.PropertyChangeEvent
 import javax.swing.*
 import javax.swing.tree.*
 
@@ -206,6 +210,9 @@ class AICodePanel(private val project: Project) : JPanel(), Disposable {
         }
 
     private inner class GroupSelectorAction : ComboBoxAction() {
+        override fun createComboBoxButton(presentation: Presentation): ComboBoxButton =
+            EndEllipsisComboBoxButton(presentation)
+
         override fun update(e: AnActionEvent) {
             e.project?.let {
                 val active = AICodeFileService.getInstance(it).getActiveGroupName()
@@ -323,6 +330,51 @@ class AICodePanel(private val project: Project) : JPanel(), Disposable {
             )
             return group
         }
+
+        private inner class EndEllipsisComboBoxButton(presentation: Presentation) :
+            ComboBoxButton(presentation) {
+            private var fullText = presentation.text.orEmpty()
+
+            override fun presentationChanged(event: PropertyChangeEvent) {
+                if (event.propertyName == Presentation.PROP_TEXT) {
+                    fullText = event.newValue as? String ?: ""
+                }
+                super.presentationChanged(event)
+            }
+
+            override fun paintComponent(graphics: Graphics) {
+                val clippedText = clipAtEnd(fullText, graphics.fontMetrics, availableTextWidth())
+                if (text != clippedText) text = clippedText
+                super.paintComponent(graphics)
+            }
+
+            private fun availableTextWidth(): Int {
+                val iconWidth = icon?.iconWidth ?: 0
+                val iconGap = if (iconWidth == 0 || fullText.isEmpty()) 0 else iconTextGap
+                val arrowWidth = if (isArrowVisible) JBUI.scale(16) else 0
+                return (width -
+                        insets.left - insets.right -
+                        margin.left - margin.right -
+                        iconWidth - iconGap - arrowWidth)
+                    .coerceAtLeast(0)
+            }
+        }
+    }
+
+    private fun clipAtEnd(text: String, fontMetrics: FontMetrics, availableWidth: Int): String {
+        if (fontMetrics.stringWidth(text) <= availableWidth) return text
+        val ellipsis = "..."
+        if (fontMetrics.stringWidth(ellipsis) > availableWidth) return ""
+
+        val codePoints = text.codePoints().toArray()
+        var low = 0
+        var high = codePoints.size
+        while (low < high) {
+            val length = (low + high + 1) / 2
+            val candidate = String(codePoints, 0, length) + ellipsis
+            if (fontMetrics.stringWidth(candidate) <= availableWidth) low = length else high = length - 1
+        }
+        return String(codePoints, 0, low) + ellipsis
     }
 
     private fun copyMarkdownToClipboard() {
