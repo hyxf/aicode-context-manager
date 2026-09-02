@@ -13,6 +13,7 @@ import com.intellij.openapi.actionSystem.PlatformDataKeys
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.wm.ToolWindowManager
 import com.intellij.ui.content.Content
 import java.awt.Component
 
@@ -23,6 +24,7 @@ class SelectCommonCommandAction : AnAction(
 ), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
+        if (!isTerminalToolWindowVisible(project)) return
         val targetContent = resolveTargetContent(e.getData(PlatformCoreDataKeys.CONTEXT_COMPONENT))
         val commands = try {
             CommonCommandService.getInstance().getCommands()
@@ -47,9 +49,12 @@ class SelectCommonCommandAction : AnAction(
     }
 
     override fun update(e: AnActionEvent) {
+        val project = e.project
         val toolWindow = e.getData(PlatformDataKeys.TOOL_WINDOW)
         e.presentation.isEnabledAndVisible =
-            e.project != null && (toolWindow == null || toolWindow.id == TERMINAL_TOOL_WINDOW_ID)
+            project != null &&
+                isTerminalToolWindowVisible(project) &&
+                (toolWindow == null || toolWindow.id == TERMINAL_TOOL_WINDOW_ID)
     }
 
     override fun getActionUpdateThread() = ActionUpdateThread.EDT
@@ -58,6 +63,9 @@ class SelectCommonCommandAction : AnAction(
         NotificationGroupManager.getInstance().getNotificationGroup("AICode")
             .createNotification(message, type).notify(project)
     }
+
+    private fun isTerminalToolWindowVisible(project: Project): Boolean =
+        ToolWindowManager.getInstance(project).getToolWindow(TERMINAL_TOOL_WINDOW_ID)?.isVisible == true
 
     internal fun resolveTargetContent(contextComponent: Component?): Content? {
         var component = contextComponent
