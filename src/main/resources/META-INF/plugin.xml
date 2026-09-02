@@ -181,8 +181,12 @@
         <action id="com.aicode.action.SelectCommonCommandAction"
                 class="com.aicode.feature.terminal.action.SelectCommonCommandAction"
                 text="Common Commands..."
-                description="Select a common command and insert it into Terminal">
+                description="Select a common command and insert it into Terminal"
+                icon="/icons/terminalCommand.svg">
             <add-to-group group-id="ToolWindowContextMenu" anchor="last"/>
+            <add-to-group group-id="TerminalToolwindowActionGroup"
+                          anchor="after"
+                          relative-to-action="Terminal.NewTab"/>
             <keyboard-shortcut keymap="$default" first-keystroke="ctrl SEMICOLON"/>
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="ctrl SEMICOLON"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="ctrl SEMICOLON"/>
