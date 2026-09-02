@@ -2,6 +2,7 @@ package com.aicode.feature.terminal.settings
 
 import com.aicode.feature.terminal.data.DefaultCommonCommands
 import com.aicode.feature.terminal.service.CommonCommandService
+import com.aicode.feature.terminal.ui.CommonCommandDialog
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -112,7 +113,7 @@ class CommonCommandConfigurable : Configurable {
     }
 
     private fun addCommand() {
-        val value = promptForCommand("Add Command", "") ?: return
+        val value = CommonCommandDialog.showAdd() ?: return
         if (!validateUnique(value, null)) return
         workingCommands.add(value)
         refreshList(value)
@@ -121,7 +122,7 @@ class CommonCommandConfigurable : Configurable {
     private fun editCommand() {
         val oldValue = commandList?.selectedValue ?: return
         if (oldValue in DefaultCommonCommands.commands) return
-        val value = promptForCommand("Edit Command", oldValue) ?: return
+        val value = CommonCommandDialog.showEdit(oldValue) ?: return
         if (!validateUnique(value, oldValue)) return
         val index = workingCommands.indexOf(oldValue)
         if (index >= 0) workingCommands[index] = value
@@ -139,10 +140,6 @@ class CommonCommandConfigurable : Configurable {
         val selected = commandList?.selectedValue ?: return false
         return selected !in DefaultCommonCommands.commands
     }
-
-    private fun promptForCommand(title: String, initialValue: String): String? =
-        Messages.showInputDialog("Command:", title, null, initialValue, null)
-            ?.trim()?.takeIf(String::isNotEmpty)
 
     private fun moveSelectedCommand(offset: Int) {
         val list = commandList ?: return

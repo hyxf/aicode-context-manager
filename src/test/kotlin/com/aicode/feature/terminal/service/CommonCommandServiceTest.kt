@@ -38,4 +38,14 @@ class CommonCommandServiceTest {
 
         assertThrows(IllegalStateException::class.java) { CommonCommandService(path).getCommands() }
     }
+
+    @Test
+    fun `adds a selected command once`() {
+        val path = temporaryFolder.root.toPath().resolve("commoncmd.json")
+        val service = CommonCommandService(path)
+
+        assertTrue(service.addCommand("  git log --oneline  "))
+        assertEquals(false, service.addCommand("git log --oneline"))
+        assertEquals(1, service.getCommands().count { it == "git log --oneline" })
+    }
 }

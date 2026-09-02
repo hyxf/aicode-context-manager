@@ -68,6 +68,16 @@ class CommonCommandService(
         }
     }
 
+    @Synchronized
+    fun addCommand(command: String): Boolean {
+        val normalized = command.trim()
+        if (normalized.isEmpty()) return false
+        val commands = getCommands()
+        if (normalized in commands) return false
+        saveCommands(commands + normalized)
+        return true
+    }
+
     private fun normalize(commands: List<String>): List<String> =
         commands.map(String::trim).filter(String::isNotEmpty).distinct()
 

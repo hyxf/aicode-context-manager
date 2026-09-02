@@ -191,6 +191,16 @@
             <keyboard-shortcut keymap="Mac OS X" first-keystroke="ctrl SEMICOLON"/>
             <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="ctrl SEMICOLON"/>
         </action>
+
+        <action id="com.aicode.action.AddCurrentCommandAction"
+                class="com.aicode.feature.terminal.action.AddCurrentCommandAction"
+                text="Add Current Command"
+                description="Add a command using clipboard text as the initial value"
+                icon="/icons/addTerminalCommand.svg">
+            <add-to-group group-id="TerminalToolwindowActionGroup"
+                          anchor="after"
+                          relative-to-action="com.aicode.action.SelectCommonCommandAction"/>
+        </action>
     </actions>
 
     <projectListeners>
