@@ -42,11 +42,20 @@
         <applicationService
                 serviceImplementation="com.aicode.feature.git.service.CommonCommitMessageService"/>
 
+        <applicationService
+                serviceImplementation="com.aicode.feature.terminal.service.CommonCommandService"/>
+
         <applicationConfigurable
                 id="com.aicode.settings.CommonCommitMessages"
                 parentId="tools"
                 displayName="Common Commit Messages"
                 instance="com.aicode.feature.git.settings.CommonCommitMessageConfigurable"/>
+
+        <applicationConfigurable
+                id="com.aicode.settings.CommonCommands"
+                parentId="tools"
+                displayName="Common Commands"
+                instance="com.aicode.feature.terminal.settings.CommonCommandConfigurable"/>
 
         <!-- Icon Provider -->
         <iconProvider implementation="com.aicode.feature.ai.provider.AICodeIconProvider" order="first"/>
@@ -167,6 +176,16 @@
             <add-to-group group-id="Vcs.MessageActionGroup"
                           anchor="after"
                           relative-to-action="Vcs.ShowMessageHistory"/>
+        </action>
+
+        <action id="com.aicode.action.SelectCommonCommandAction"
+                class="com.aicode.feature.terminal.action.SelectCommonCommandAction"
+                text="Common Commands..."
+                description="Select a common command and insert it into Terminal">
+            <add-to-group group-id="ToolWindowContextMenu" anchor="last"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl SEMICOLON"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="ctrl SEMICOLON"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="ctrl SEMICOLON"/>
         </action>
     </actions>
 
