@@ -187,9 +187,9 @@
             <add-to-group group-id="TerminalToolwindowActionGroup"
                           anchor="after"
                           relative-to-action="Terminal.NewTab"/>
-            <keyboard-shortcut keymap="$default" first-keystroke="ctrl SEMICOLON"/>
-            <keyboard-shortcut keymap="Mac OS X" first-keystroke="ctrl SEMICOLON"/>
-            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="ctrl SEMICOLON"/>
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl shift I"/>
+            <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta shift I"/>
+            <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta shift I"/>
         </action>
 
         <action id="com.aicode.action.AddCurrentCommandAction"
