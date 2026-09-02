@@ -36,7 +36,7 @@ class SelectCommonCommandAction : AnAction(
         }
         CommonCommandPopup(project, commands) { command ->
             try {
-                if (!TerminalTextInserter.insert(project, command, targetContent)) {
+                if (!TerminalTextInserter.insert(project, command.command, targetContent)) {
                     notify(project, "Open a terminal session before inserting a command.", NotificationType.WARNING)
                 }
             } catch (ex: Exception) {

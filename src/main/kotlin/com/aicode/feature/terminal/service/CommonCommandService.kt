@@ -1,6 +1,7 @@
 package com.aicode.feature.terminal.service
 
 import com.aicode.feature.terminal.data.DefaultCommonCommands
+import com.aicode.feature.terminal.model.CommonCommand
 import com.aicode.feature.terminal.model.CommonCommandConfig
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonParseException
@@ -18,7 +19,7 @@ class CommonCommandService(
     private val gson = GsonBuilder().setPrettyPrinting().create()
 
     @Synchronized
-    fun getCommands(): List<String> {
+    fun getCommands(): List<CommonCommand> {
         if (!Files.exists(configPath)) {
             saveCommands(DefaultCommonCommands.commands)
             return DefaultCommonCommands.commands
@@ -33,7 +34,19 @@ class CommonCommandService(
                 throw IllegalStateException("Common command configuration field 'commands' must be an array.")
             }
             return normalize(commands.asJsonArray.mapNotNull { element ->
-                element.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+                when {
+                    element.isJsonPrimitive && element.asJsonPrimitive.isString ->
+                        CommonCommand(element.asString)
+                    element.isJsonObject -> {
+                        val command = element.asJsonObject.get("command")
+                            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
+                            ?: return@mapNotNull null
+                        val description = element.asJsonObject.get("description")
+                            ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString.orEmpty()
+                        CommonCommand(command, description)
+                    }
+                    else -> null
+                }
             })
         } catch (ex: JsonParseException) {
             throw IllegalStateException("Invalid JSON in $configPath: ${ex.message}", ex)
@@ -44,7 +57,7 @@ class CommonCommandService(
     }
 
     @Synchronized
-    fun saveCommands(commands: List<String>) {
+    fun saveCommands(commands: List<CommonCommand>) {
         val parent = configPath.toAbsolutePath().parent
         try {
             if (parent != null) Files.createDirectories(parent)
@@ -69,17 +82,19 @@ class CommonCommandService(
     }
 
     @Synchronized
-    fun addCommand(command: String): Boolean {
-        val normalized = command.trim()
-        if (normalized.isEmpty()) return false
+    fun addCommand(command: CommonCommand): Boolean {
+        val normalized = normalize(command) ?: return false
         val commands = getCommands()
-        if (normalized in commands) return false
+        if (commands.any { it.command == normalized.command }) return false
         saveCommands(commands + normalized)
         return true
     }
 
-    private fun normalize(commands: List<String>): List<String> =
-        commands.map(String::trim).filter(String::isNotEmpty).distinct()
+    private fun normalize(commands: List<CommonCommand>): List<CommonCommand> =
+        commands.mapNotNull(::normalize).distinctBy(CommonCommand::command)
+
+    private fun normalize(command: CommonCommand): CommonCommand? =
+        command.command.trim().takeIf(String::isNotEmpty)?.let { CommonCommand(it, command.description.trim()) }
 
     companion object {
         fun getInstance(): CommonCommandService =

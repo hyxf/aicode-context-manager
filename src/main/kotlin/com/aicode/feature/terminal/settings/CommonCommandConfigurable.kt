@@ -1,53 +1,45 @@
 package com.aicode.feature.terminal.settings
 
 import com.aicode.feature.terminal.data.DefaultCommonCommands
+import com.aicode.feature.terminal.model.CommonCommand
 import com.aicode.feature.terminal.service.CommonCommandService
 import com.aicode.feature.terminal.ui.CommonCommandDialog
+import com.aicode.feature.terminal.ui.CommonCommandListCellRenderer
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurationException
 import com.intellij.openapi.ui.Messages
-import com.intellij.ui.ColoredListCellRenderer
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.SearchTextField
-import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.ToolbarDecorator
 import com.intellij.ui.components.JBList
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
 import javax.swing.DefaultListModel
 import javax.swing.JComponent
-import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.ListSelectionModel
 import javax.swing.event.DocumentEvent
 
 class CommonCommandConfigurable : Configurable {
     private val service = CommonCommandService.getInstance()
-    private var savedCommands: List<String> = emptyList()
-    private val workingCommands = mutableListOf<String>()
+    private var savedCommands: List<CommonCommand> = emptyList()
+    private val workingCommands = mutableListOf<CommonCommand>()
     private var panel: JPanel? = null
     private var searchField: SearchTextField? = null
-    private var commandList: JBList<String>? = null
-    private var listModel: DefaultListModel<String>? = null
+    private var commandList: JBList<CommonCommand>? = null
+    private var listModel: DefaultListModel<CommonCommand>? = null
 
     override fun getDisplayName() = "Common Commands"
 
     override fun createComponent(): JComponent {
-        val model = DefaultListModel<String>()
+        val model = DefaultListModel<CommonCommand>()
         val list = JBList(model).apply {
             selectionMode = ListSelectionModel.SINGLE_SELECTION
-            fixedCellHeight = JBUI.scale(30)
-            cellRenderer = object : ColoredListCellRenderer<String>() {
-                override fun customizeCellRenderer(
-                    list: JList<out String>, value: String, index: Int, selected: Boolean, hasFocus: Boolean,
-                ) {
-                    border = JBUI.Borders.empty(0, 10)
-                    append(value, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-                }
-            }
+            fixedCellHeight = JBUI.scale(52)
+            cellRenderer = CommonCommandListCellRenderer()
             emptyText.text = "No commands."
         }
         val search = SearchTextField(false).apply {
@@ -121,7 +113,7 @@ class CommonCommandConfigurable : Configurable {
 
     private fun editCommand() {
         val oldValue = commandList?.selectedValue ?: return
-        if (oldValue in DefaultCommonCommands.commands) return
+        if (DefaultCommonCommands.contains(oldValue)) return
         val value = CommonCommandDialog.showEdit(oldValue) ?: return
         if (!validateUnique(value, oldValue)) return
         val index = workingCommands.indexOf(oldValue)
@@ -131,14 +123,14 @@ class CommonCommandConfigurable : Configurable {
 
     private fun removeCommand() {
         val selected = commandList?.selectedValue ?: return
-        if (selected in DefaultCommonCommands.commands) return
+        if (DefaultCommonCommands.contains(selected)) return
         workingCommands.remove(selected)
         refreshList()
     }
 
     private fun canModifySelectedCommand(): Boolean {
         val selected = commandList?.selectedValue ?: return false
-        return selected !in DefaultCommonCommands.commands
+        return !DefaultCommonCommands.contains(selected)
     }
 
     private fun moveSelectedCommand(offset: Int) {
@@ -163,19 +155,19 @@ class CommonCommandConfigurable : Configurable {
         refreshList(missing.first())
     }
 
-    private fun validateUnique(value: String, oldValue: String?): Boolean {
-        if (value != oldValue && value in workingCommands) {
+    private fun validateUnique(value: CommonCommand, oldValue: CommonCommand?): Boolean {
+        if (value.command != oldValue?.command && workingCommands.any { it.command == value.command }) {
             Messages.showErrorDialog("This command already exists.", "Duplicate Command")
             return false
         }
         return true
     }
 
-    private fun refreshList(selectedValue: String? = null) {
+    private fun refreshList(selectedValue: CommonCommand? = null) {
         val model = listModel ?: return
         val keyword = searchField?.text.orEmpty().trim()
         val filtered = if (keyword.isEmpty()) workingCommands else workingCommands.filter {
-            it.contains(keyword, ignoreCase = true)
+            it.command.contains(keyword, ignoreCase = true) || it.description.contains(keyword, ignoreCase = true)
         }
         model.clear()
         filtered.forEach(model::addElement)

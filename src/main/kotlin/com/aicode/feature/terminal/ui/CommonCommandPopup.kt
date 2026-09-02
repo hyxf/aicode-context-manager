@@ -1,12 +1,11 @@
 package com.aicode.feature.terminal.ui
 
+import com.aicode.feature.terminal.model.CommonCommand
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
-import com.intellij.ui.ColoredListCellRenderer
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.SearchTextField
-import com.intellij.ui.SimpleTextAttributes
 import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
@@ -17,17 +16,16 @@ import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.DefaultListModel
-import javax.swing.JList
 import javax.swing.JPanel
 import javax.swing.ListSelectionModel
 import javax.swing.event.DocumentEvent
 
 class CommonCommandPopup(
     private val project: Project,
-    private val commands: List<String>,
-    private val onChosen: (String) -> Unit,
+    private val commands: List<CommonCommand>,
+    private val onChosen: (CommonCommand) -> Unit,
 ) {
-    private val listModel = DefaultListModel<String>()
+    private val listModel = DefaultListModel<CommonCommand>()
     private val commandList = JBList(listModel)
     private val searchField = SearchTextField(false)
     private lateinit var popup: JBPopup
@@ -52,15 +50,8 @@ class CommonCommandPopup(
             }
         })
         commandList.selectionMode = ListSelectionModel.SINGLE_SELECTION
-        commandList.fixedCellHeight = JBUI.scale(34)
-        commandList.cellRenderer = object : ColoredListCellRenderer<String>() {
-            override fun customizeCellRenderer(
-                list: JList<out String>, value: String, index: Int, selected: Boolean, hasFocus: Boolean,
-            ) {
-                border = JBUI.Borders.empty(0, 10)
-                append(value, SimpleTextAttributes.REGULAR_ATTRIBUTES)
-            }
-        }
+        commandList.fixedCellHeight = JBUI.scale(52)
+        commandList.cellRenderer = CommonCommandListCellRenderer()
         commandList.emptyText.text = "No commands found."
         commandList.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(event: MouseEvent) {
@@ -97,7 +88,9 @@ class CommonCommandPopup(
 
     private fun refreshCommands() {
         val keyword = searchField.text.trim()
-        val filtered = if (keyword.isEmpty()) commands else commands.filter { it.contains(keyword, ignoreCase = true) }
+        val filtered = if (keyword.isEmpty()) commands else commands.filter {
+            it.command.contains(keyword, ignoreCase = true) || it.description.contains(keyword, ignoreCase = true)
+        }
         listModel.clear()
         filtered.forEach(listModel::addElement)
         if (listModel.size > 0) commandList.selectedIndex = 0

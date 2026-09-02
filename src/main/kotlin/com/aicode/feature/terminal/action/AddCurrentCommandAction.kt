@@ -23,7 +23,7 @@ class AddCurrentCommandAction : AnAction(
         val command = CommonCommandDialog.showAdd(initialValueFromClipboard()) ?: return
         try {
             if (CommonCommandService.getInstance().addCommand(command)) {
-                notify(project, "Added to Common Commands: $command", NotificationType.INFORMATION)
+                notify(project, "Added to Common Commands: ${command.command}", NotificationType.INFORMATION)
             } else {
                 notify(project, "The command already exists in Common Commands.", NotificationType.INFORMATION)
             }

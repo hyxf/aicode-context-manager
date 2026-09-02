@@ -1,6 +1,7 @@
 package com.aicode.feature.terminal.service
 
 import com.aicode.feature.terminal.data.DefaultCommonCommands
+import com.aicode.feature.terminal.model.CommonCommand
 import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -26,9 +27,16 @@ class CommonCommandServiceTest {
         val path = temporaryFolder.root.toPath().resolve("nested/commoncmd.json")
         val service = CommonCommandService(path)
 
-        service.saveCommands(listOf(" git status ", "", "git status", "git log --oneline"))
+        service.saveCommands(listOf(
+            CommonCommand(" git status ", " status "), CommonCommand(""),
+            CommonCommand("git status", "duplicate"), CommonCommand("git log --oneline", "Recent commits"),
+        ))
 
-        assertEquals(listOf("git status", "git log --oneline"), service.getCommands())
+        assertEquals(
+            listOf(CommonCommand("git status", "status"), CommonCommand("git log --oneline", "Recent commits")),
+            service.getCommands(),
+        )
+        assertTrue(Files.readString(path).contains("\"description\": \"Recent commits\""))
     }
 
     @Test
@@ -44,8 +52,19 @@ class CommonCommandServiceTest {
         val path = temporaryFolder.root.toPath().resolve("commoncmd.json")
         val service = CommonCommandService(path)
 
-        assertTrue(service.addCommand("  git log --oneline  "))
-        assertEquals(false, service.addCommand("git log --oneline"))
-        assertEquals(1, service.getCommands().count { it == "git log --oneline" })
+        assertTrue(service.addCommand(CommonCommand("  git log --oneline  ", " Recent commits ")))
+        assertEquals(false, service.addCommand(CommonCommand("git log --oneline", "Duplicate")))
+        assertEquals(1, service.getCommands().count { it.command == "git log --oneline" })
+    }
+
+    @Test
+    fun `migrates legacy string commands`() {
+        val path = temporaryFolder.newFile("commoncmd.json").toPath()
+        Files.writeString(path, """{"commands":["git status","git log --oneline"]}""")
+
+        assertEquals(
+            listOf(CommonCommand("git status"), CommonCommand("git log --oneline")),
+            CommonCommandService(path).getCommands(),
+        )
     }
 }
